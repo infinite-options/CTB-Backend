@@ -1,0 +1,641 @@
+# CTB BACKEND PYTHON FILE
+# https://3s3sftsr90.execute-api.us-west-1.amazonaws.com/dev/api/v2/<enter_endpoint_details> for ctb
+
+
+# SECTION 1:  IMPORT FILES AND FUNCTIONS
+from flask import Flask, request, render_template, url_for, redirect
+from flask_restful import Resource, Api
+from flask_mail import Mail, Message  # used for email
+# used for serializer email and error handling
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
+from flask_cors import CORS
+
+import boto3
+import os.path
+
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from urllib.parse import urlparse
+import urllib.request
+import base64
+from oauth2client import GOOGLE_REVOKE_URI, GOOGLE_TOKEN_URI, client
+from io import BytesIO
+from pytz import timezone as ptz
+import pytz
+from dateutil.relativedelta import relativedelta
+import math
+
+from werkzeug.exceptions import BadRequest, NotFound
+
+from dateutil.relativedelta import *
+from decimal import Decimal
+from datetime import datetime, date, timedelta
+from hashlib import sha512
+from math import ceil
+import string
+import random
+import os
+import hashlib
+
+# regex
+import re
+# from env_keys import BING_API_KEY, RDS_PW
+
+import decimal
+import sys
+import json
+import pytz
+import pymysql
+import requests
+import stripe
+import binascii
+from datetime import datetime
+import datetime as dt
+from datetime import timezone as dtz
+import time
+
+import csv
+
+
+# from env_file import RDS_PW, S3_BUCKET, S3_KEY, S3_SECRET_ACCESS_KEY
+s3 = boto3.client('s3')
+
+
+app = Flask(__name__)
+cors = CORS(app, resources={r'/api/*': {'origins': '*'}})
+# Set this to false when deploying to live application
+app.config['DEBUG'] = True
+
+
+
+
+
+# SECTION 2:  UTILITIES AND SUPPORT FUNCTIONS
+# EMAIL INFO
+#app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_SERVER'] = 'smtp.mydomain.com'
+app.config['MAIL_PORT'] = 465
+
+app.config['MAIL_USERNAME'] = 'support@manifestmy.space'
+app.config['MAIL_PASSWORD'] = 'Support4MySpace'
+app.config['MAIL_DEFAULT_SENDER'] = 'support@manifestmy.space'
+
+
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = True
+# app.config['MAIL_DEBUG'] = True
+# app.config['MAIL_SUPPRESS_SEND'] = False
+# app.config['TESTING'] = False
+SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg'])
+mail = Mail(app)
+s = URLSafeTimedSerializer('thisisaverysecretkey')
+# API
+api = Api(app)
+
+
+# convert to UTC time zone when testing in local time zone
+utc = pytz.utc
+# These statment return Day and Time in GMT
+# def getToday(): return datetime.strftime(datetime.now(utc), "%Y-%m-%d")
+# def getNow(): return datetime.strftime(datetime.now(utc),"%Y-%m-%d %H:%M:%S")
+
+# These statment return Day and Time in Local Time - Not sure about PST vs PDT
+def getToday(): return datetime.strftime(datetime.now(), "%Y-%m-%d")
+def getNow(): return datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S")
+
+
+# NOTIFICATIONS - NEED TO INCLUDE NOTIFICATION HUB FILE IN SAME DIRECTORY
+# from NotificationHub import AzureNotification
+# from NotificationHub import AzureNotificationHub
+# from NotificationHub import Notification
+# from NotificationHub import NotificationHub
+# For Push notification
+# isDebug = False
+# NOTIFICATION_HUB_KEY = os.environ.get('NOTIFICATION_HUB_KEY')
+# NOTIFICATION_HUB_NAME = os.environ.get('NOTIFICATION_HUB_NAME')
+
+# Twilio settings
+# from twilio.rest import Client
+
+# TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
+# TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
+
+
+
+
+
+# SECTION 3: DATABASE FUNCTIONALITY
+# RDS for AWS SQL 5.7
+# RDS_HOST = 'pm-mysqldb.cxjnrciilyjq.us-west-1.rds.amazonaws.com'
+# RDS for AWS SQL 8.0
+RDS_HOST = 'io-mysqldb8.cxjnrciilyjq.us-west-1.rds.amazonaws.com'
+RDS_PORT = 3306
+RDS_USER = 'admin'
+RDS_DB = 'ctb'
+RDS_PW="prashant"   # Not sure if I need this
+# RDS_PW = os.environ.get('RDS_PW')
+S3_BUCKET = "manifest-image-db"
+# S3_BUCKET = os.environ.get('S3_BUCKET')
+# S3_KEY = os.environ.get('S3_KEY')
+# S3_SECRET_ACCESS_KEY = os.environ.get('S3_SECRET_ACCESS_KEY')
+
+
+# CONNECT AND DISCONNECT TO MYSQL DATABASE ON AWS RDS (API v2)
+# Connect to MySQL database (API v2)
+def connect():
+    global RDS_PW
+    global RDS_HOST
+    global RDS_PORT
+    global RDS_USER
+    global RDS_DB
+
+    # print("Trying to connect to RDS (API v2)...")
+    try:
+        conn = pymysql.connect(host=RDS_HOST,
+                               user=RDS_USER,
+                               port=RDS_PORT,
+                               passwd=RDS_PW,
+                               db=RDS_DB,
+                               charset='utf8mb4',
+                               cursorclass=pymysql.cursors.DictCursor)
+        # print("Successfully connected to RDS. (API v2)")
+        return conn
+    except:
+        print("Could not connect to RDS. (API v2)")
+        raise Exception("RDS Connection failed. (API v2)")
+
+# Disconnect from MySQL database (API v2)
+def disconnect(conn):
+    try:
+        conn.close()
+        # print("Successfully disconnected from MySQL database. (API v2)")
+    except:
+        print("Could not properly disconnect from MySQL database. (API v2)")
+        raise Exception("Failure disconnecting from MySQL database. (API v2)")
+
+# Execute an SQL command (API v2)
+# Set cmd parameter to 'get' or 'post'
+# Set conn parameter to connection object
+# OPTIONAL: Set skipSerialization to True to skip default JSON response serialization
+def execute(sql, cmd, conn, skipSerialization=False):
+    response = {}
+    print("==> Execute Query: ", cmd)
+    # print("==> Execute Query: ", cmd,sql)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            if cmd == 'get':
+                result = cur.fetchall()
+                response['message'] = 'Successfully executed SQL query.'
+                # Return status code of 280 for successful GET request
+                response['code'] = 280
+                if not skipSerialization:
+                    result = serializeResponse(result)
+                response['result'] = result
+            elif cmd == 'post':
+                conn.commit()
+                response['message'] = 'Successfully committed SQL command.'
+                # Return status code of 281 for successful POST request
+                response['code'] = 281
+            else:
+                response['message'] = 'Request failed. Unknown or ambiguous instruction given for MySQL command.'
+                # Return status code of 480 for unknown HTTP method
+                response['code'] = 480
+    except:
+        response['message'] = 'Request failed, could not execute MySQL command.'
+        # Return status code of 490 for unsuccessful HTTP request
+        response['code'] = 490
+    finally:
+        # response['sql'] = sql
+        return response
+
+# Serialize JSON
+def serializeResponse(response):
+    try:
+        for row in response:
+            for key in row:
+                if type(row[key]) is Decimal:
+                    row[key] = float(row[key])
+                elif (type(row[key]) is date or type(row[key]) is datetime) and row[key] is not None:
+                # Change this back when finished testing to get only date
+                    row[key] = row[key].strftime("%Y-%m-%d")
+                    # row[key] = row[key].strftime("%Y-%m-%d %H-%M-%S")
+                # elif is_json(row[key]):
+                #     row[key] = json.loads(row[key])
+                elif isinstance(row[key], bytes):
+                    row[key] = row[key].decode()
+        return response
+    except:
+        raise Exception("Bad query JSON")
+
+
+# RUN STORED PROCEDURES
+
+        # MOVE STORED PROCEDURES HERE
+
+
+# Function to upload image to s3
+def allowed_file(filename):
+    # Checks if the file is allowed to upload
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def helper_upload_img(file):
+    bucket = S3_BUCKET
+    # creating key for image name
+    salt = os.urandom(8)
+    dk = hashlib.pbkdf2_hmac('sha256',  (file.filename).encode(
+        'utf-8'), salt, 100000, dklen=64)
+    key = (salt + dk).hex()
+
+    if file and allowed_file(file.filename):
+
+        # image link
+        filename = 'https://s3-us-west-1.amazonaws.com/' \
+                   + str(bucket) + '/' + str(key)
+
+        # uploading image to s3 bucket
+        upload_file = s3.put_object(
+            Bucket=bucket,
+            Body=file,
+            Key=key,
+            ACL='public-read',
+            ContentType='image/jpeg'
+        )
+        return filename
+    return None
+
+# Function to upload icons
+def helper_icon_img(url):
+
+    bucket = S3_BUCKET
+    response = requests.get(url, stream=True)
+
+    if response.status_code == 200:
+        raw_data = response.content
+        url_parser = urlparse(url)
+        file_name = os.path.basename(url_parser.path)
+        key = 'image' + "/" + file_name
+
+        try:
+
+            with open(file_name, 'wb') as new_file:
+                new_file.write(raw_data)
+
+            # Open the server file as read mode and upload in AWS S3 Bucket.
+            data = open(file_name, 'rb')
+            upload_file = s3.put_object(
+                Bucket=bucket,
+                Body=data,
+                Key=key,
+                ACL='public-read',
+                ContentType='image/jpeg')
+            data.close()
+
+            file_url = 'https://%s/%s/%s' % (
+                's3-us-west-1.amazonaws.com', bucket, key)
+
+        except Exception as e:
+            print("Error in file upload %s." % (str(e)))
+
+        finally:
+            new_file.close()
+            os.remove(file_name)
+    else:
+        print("Cannot parse url")
+
+    return file_url
+
+
+
+
+
+# RUN STORED PROCEDURES
+
+
+def get_new_productUID(conn):
+    newProductQuery = execute("call pmctb.new_product_uid();", 'get', conn)
+    if newProductQuery['code'] == 280:
+        return newProductQuery['result'][0]['new_id']
+    return "Could not generate new product UID", 500
+
+
+#  -----------------------------------------  PROGRAM ENDPOINTS START HERE  -----------------------------------------
+
+
+
+# IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
+class ImportJSONBOM(Resource):
+    def get(self):
+        print("\nIn Import BOM")
+        response = {}
+        items = {}
+        try:
+            conn = connect()
+            filepath = request.form.get('filepath')
+            print(filepath)
+
+            with open(filepath) as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=',')
+                print('Read csv file')
+                
+                # Initialize uber List
+                data = []
+                jsondata = []
+                parents = []
+                children = []
+
+                # Bring in each row as a List and append it to the uber List
+                for row in csv_reader:
+                    data.append(row)
+
+                # ONLY FOR DEBUG: Print each Row within the uber List
+                # print('\n Data Table')
+                # for items in data:
+                #     print(data.index(items), items)
+
+
+                # FIND LFT AND RGT FOR EACH ITEM IN LIST
+                print('\nFINDING LFT')
+                currentLevel = 0
+                lft = 0
+                rgt = 0
+
+                for items in data:
+                    # print("\nStarting on New Row")
+                    # print(data.index(items), type(data.index(items)), items)
+                    previousLevel = currentLevel
+                    # print("Previous Level: ", previousLevel, type(previousLevel))
+                    previouslft = lft
+                    # print("Previous lft: ", previouslft, type(previouslft))
+                    previousrgt = rgt
+                    # print("Previous rgt: ", previousrgt, type(previousrgt))
+
+                
+                    # If it is the zeroth element (ie Header Row) then set headers
+                    if data.index(items) == 0:
+                        # print(data[data.index(items)])
+
+                        # Find Index for Level
+                        if 'Level' in items:
+                            levelIndex = items.index('Level')
+                            print("Level Index: ", levelIndex)
+                        elif 'LEVEL' in items:
+                            levelIndex = items.index('LEVEL')
+                            print("Level Index: ", levelIndex)
+                        else:
+                            print("Level does not exist")
+                            return("Level does not exist")
+
+
+                        # Find Index for Part Number
+                        if 'PART NUMBER' in items:
+                            PNIndex = items.index('PART NUMBER')
+                            print("PN Index: ", PNIndex)
+                        elif 'NUMBER' in items:
+                            PNIndex = items.index('NUMBER')
+                            print("PN Index: ", PNIndex)
+                        elif 'Number' in items:
+                            PNIndex = items.index('Number')
+                            print("PN Index: ", PNIndex)
+                        elif 'Part' in items:
+                            PNIndex = items.index('Part')
+                            print("PN Index: ", PNIndex)
+                        elif 'GPN' in items:
+                            PNIndex = items.index('GPN')
+                            print("PN Index: ", PNIndex)
+                        else:
+                            print("PN does not exist")
+                            PNIndex = -1
+                        
+
+                        # Find Index for QTY
+                        if 'qty' in items:
+                            QtyIndex = items.index('qty')
+                            print("Qty Index: ", QtyIndex)
+                        elif 'Qty' in items:
+                            QtyIndex = items.index('Qty')
+                            print("Qty Index: ", QtyIndex)
+                        elif 'QTY' in items:
+                            QtyIndex = items.index('QTY')
+                            print("Qty Index: ", QtyIndex)
+                        elif 'Qty Per' in items:
+                            QtyIndex = items.index('Qty Per')
+                            print("Qty Index: ", QtyIndex)
+                        else:
+                            print("Qty does not exist")
+                            return("Qty does not exist")
+
+
+                        items.extend(['lft', 'rgt', 'Parent'])
+                        # print(data.index(items), items)
+                        
+                        lftIndex = items.index('lft')
+                        rgtIndex = items.index('rgt')
+                        parentIndex = items.index('Parent')
+                        # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
+
+
+                    # If it is the first element (ie Top Level Assembly) then set lft and rgt
+                    elif data.index(items) == 1:
+                        # print(data[data.index(items)])
+                        currentLevel = 0
+                        # print("Current Level: ", currentLevel, type(currentLevel))
+                        lft = data.index(items)
+                        rgt = 0
+                        items.extend([lft, rgt, 'Parent']) 
+                        # print(items)
+                        # print(data.index(items), items)
+                        
+
+                    # For the rest of the tree calc lft and rgt
+                    elif data.index(items) > 1:
+                        currentLevel = int(items[levelIndex])
+                        # print("Current Level: ", currentLevel, type(currentLevel))
+                        levelDiff = currentLevel - previousLevel
+                        # print("Level Difference: ", levelDiff, type(levelDiff))
+                        if levelDiff ==  1:
+                            lft = previouslft + 1
+                        elif levelDiff ==  0:
+                            lft = previouslft + 2
+                        elif levelDiff == -1:
+                            lft = previouslft + 3
+                        elif levelDiff == -2:
+                            lft = previouslft + 4
+                        elif levelDiff == -3:
+                            lft = previouslft + 5       
+                        elif levelDiff == -4:
+                            lft = previouslft + 6
+                        else:
+                            print("Need to expand range")
+                        # print("New lft: ", lft, type(lft))
+
+                        rgt = 0
+                        items.extend([lft, rgt, 'Parent']) 
+                        # ONLY FOR DEBUG: PRINT RESULTANT TABLE WITH LFT VALUES
+                        # print(data.index(items), items)
+
+                # Level MUST BE IN COLUMN 2
+                print('\nFINDING RGT')
+                currentLevel = 0
+                lft = 0
+                rgt = 0
+                # print(levelIndex, lftIndex)
+
+                for items in data[1:]:
+                    currentRow = int(data.index(items))
+                    currentLevel = int(items[levelIndex])
+                    lft = int(items[lftIndex])
+                    print("\nCurrent Level: ", currentLevel, "Current LFT: ", lft, "Current Row: ", currentRow, type(currentRow))
+                    
+                    # If it is the first element (ie Top Level Assembly) then set lft and rgt
+                    if currentRow == 1:
+                        print(data[currentRow])
+                        # currentLevel = 0
+                        # print("Current Level: ", currentLevel, type(currentLevel))
+                        rgt = 2 * (len(data) -1)
+                        print("RGT is: ", rgt)
+                        
+                    # Check if this is the last row
+                    elif currentRow == len(data) - 1:
+                        # print("Last Row")
+                        print(data[currentRow])
+                        rgt = lft + 1
+                        print("RGT is: ", rgt)
+                        
+                        
+                    # Check if this level is deeper than the next level
+                    elif currentLevel >= int(data[currentRow + 1][levelIndex]):
+                        # print("Last Child before Next Assembly")
+                        print(data[currentRow])
+                        rgt = lft + 1
+                        # print("RGT is: ", rgt)
+                        
+
+                    # If current level is above next level then find next match
+                    else:
+                        print("In Assembly")
+                        print(data[currentRow])
+                        # Compare to next rows
+                        for remainingItems in data[(currentRow + 1):]:
+                            print("Current Level: ", currentLevel, "Next Level: ", int(remainingItems[levelIndex]))
+                            if int(remainingItems[levelIndex]) <= currentLevel:
+                                print("End Assembly")
+                                print(remainingItems[lftIndex])
+                                levelDiff = int(remainingItems[levelIndex]) - currentLevel
+                                print(levelDiff)
+                                rgt = int(remainingItems[lftIndex]) - 1 + int(levelDiff)
+                                print("RGT is: ", rgt)
+                                break
+                            
+                            else:
+                                print("No Match")
+                                rgt = 2 * (len(data) -1) - currentLevel
+                                print("RGT is: ", rgt)
+
+                    print("New rgt: ", rgt, type(rgt))
+
+                    items[rgtIndex] = rgt
+                    print(rgt, lft, PNIndex, items[PNIndex])
+                    print(int(data[currentRow][levelIndex]))
+                    print(data[currentRow][PNIndex])
+                    print(data[currentRow][QtyIndex])
+                    print(lft, rgt, 'Parent')
+                    if (rgt == lft + 1 and PNIndex != -1):
+                        print("in Child")
+                        items[parentIndex] = 'Child'
+                        jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
+                        if (items[PNIndex] not in children):
+                            children.append(items[PNIndex])
+                       
+                    elif (rgt != lft + 1 and PNIndex != -1):
+                        print("in Parent")
+                        jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
+                        if (items[PNIndex] not in parents):
+                            parents.append(items[PNIndex])
+                        
+                    # print(data.index(items), items)
+
+                # ONLY FOR DEBUG: PRINT RESULTANT TABLE IN READABLE FORMAT
+                # Print each Row within the uber List
+                # print('\n Resulting Data Table')
+                # for items in data:
+                #     print(data.index(items), items)
+                    
+
+                dataBOM = json.dumps(data)
+                # print(dataBOM)
+                jsonBOM = json.dumps(jsondata)
+                # print(jsondata)
+                jsonparents = json.dumps(parents)
+                # print("parents: ", parents)
+                jsonchildren = json.dumps(children)
+                # print("children: ", children)
+                
+
+            # Call stored procedure to get new product UID
+
+
+            new_product_uid = get_new_productUID(conn)
+            print(new_product_uid)
+            print(getNow())
+            product_desc = filepath
+
+            # Run query to enter new product UID and BOM into table
+            productquery =  '''
+                INSERT INTO pmctb.products
+                SET product_uid = \'''' + new_product_uid + '''\',
+                    product_created = \'''' + getNow() + '''\',
+                    product_desc = \'''' + product_desc + '''\',
+                    product_BOM = \'''' + jsonBOM + '''\',
+                    product_parents = \'''' + jsonparents + '''\',
+                    product_children = \'''' + jsonchildren + '''\'
+                '''
+
+            items = execute(productquery, "post", conn)
+            print("items: ", items)
+
+            
+
+            return(new_product_uid)
+        except:
+            print("Something went wrong")
+        finally:
+            disconnect(conn)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#  -- ACTUAL ENDPOINTS    -----------------------------------------
+
+# New APIs, uses connect() and disconnect()
+# Create new api template URL
+# api.add_resource(TemplateApi, '/api/v2/templateapi')
+
+# Run on below IP address and port
+# Make sure port number is unused (i.e. don't use numbers 0-1023)
+
+# GET requests
+api.add_resource(ImportJSONBOM, '/api/v2/ImportJSONBOM')
+
+
+
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=4000)
