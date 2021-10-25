@@ -327,7 +327,7 @@ def get_new_productUID(conn):
 
 # IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
 class ImportJSONBOM(Resource):
-    def get(self):
+    def post(self):
         print("\nIn Import BOM")
         response = {}
         items = {}
@@ -606,8 +606,8 @@ class ImportJSONBOM(Resource):
 
 
 
-# AVAILABLE APPOINTMENTS
-class Products(Resource):
+
+class AllProducts(Resource):
     def get(self):
         print("\nInside CTB_test")
         response = {}
@@ -619,7 +619,8 @@ class Products(Resource):
 
             # CALCULATE AVAILABLE TIME SLOTS
             query = """
-                    SELECT * FROM pmctb.products;
+                    SELECT * 
+                    FROM pmctb.products;
                     """
 
             products = execute(query, 'get', conn)
@@ -632,7 +633,31 @@ class Products(Resource):
             disconnect(conn)
 
 
+class Products(Resource):
+    def get(self,product_uid):
+        print("\nInside CTB_test")
+        response = {}
+        items = {}
 
+        try:
+            conn = connect()
+            print("Inside try block")
+
+            # CALCULATE AVAILABLE TIME SLOTS
+            query = """
+                    SELECT * 
+                    FROM pmctb.products 
+                    WHERE product_uid = '""" + product_uid + """';
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
+        
+        except:
+            raise BadRequest('Products Request failed, please try again later.')
+        finally:
+            disconnect(conn)
 
 
 
@@ -656,7 +681,8 @@ class Products(Resource):
 
 # GET requests
 api.add_resource(ImportJSONBOM, '/api/v2/ImportJSONBOM')
-api.add_resource(Products, "/api/v2/Products")
+api.add_resource(AllProducts, "/api/v2/AllProducts")
+api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 
 
 
