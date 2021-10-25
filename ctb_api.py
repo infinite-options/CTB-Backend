@@ -606,7 +606,30 @@ class ImportJSONBOM(Resource):
 
 
 
+# AVAILABLE APPOINTMENTS
+class Products(Resource):
+    def get(self):
+        print("\nInside CTB_test")
+        response = {}
+        items = {}
 
+        try:
+            conn = connect()
+            print("Inside try block")
+
+            # CALCULATE AVAILABLE TIME SLOTS
+            query = """
+                    SELECT * FROM pmctb.products;
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
+        
+        except:
+            raise BadRequest('Products Request failed, please try again later.')
+        finally:
+            disconnect(conn)
 
 
 
@@ -633,6 +656,7 @@ class ImportJSONBOM(Resource):
 
 # GET requests
 api.add_resource(ImportJSONBOM, '/api/v2/ImportJSONBOM')
+api.add_resource(Products, "/api/v2/Products")
 
 
 
