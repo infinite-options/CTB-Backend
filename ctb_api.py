@@ -896,6 +896,53 @@ class ImportJSONBOM(Resource):
         finally:
             disconnect(conn)
 
+
+
+
+
+class ImportFile(Resource):
+    def post(self):
+        print("\nIn Import File")
+        response = {}
+        items = {}
+        try:
+            conn = connect()
+                    
+            # Initialize uber List
+            data = []
+
+            filepath = request.files['filepath']
+            stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
+
+            csv_input = csv.reader(stream)
+            for row in csv_input:
+                print(row)
+                data.append(row)
+
+
+            # ONLY FOR DEBUG: Print each Row within the uber List
+            # print('\n Data Table')
+            # for items in data:
+            #     print(data.index(items), items)
+
+
+            product = TraverseTable(data, filepath.filename)
+
+
+            return(product)
+
+        except:
+            print("Something went wrong")
+        finally:
+            disconnect(conn)
+
+
+
+
+
+
+
+
 def TraverseTable(file, filename):
     print("\nIn Traverse Table")
     response = {}
@@ -1055,7 +1102,7 @@ def TraverseTable(file, filename):
                 print("RGT is: ", rgt)
                 
             # Check if this is the last row
-            elif currentRow == len(data) - 1:
+            elif currentRow == len(file) - 1:
                 # print("Last Row")
                 print(file[currentRow])
                 rgt = lft + 1
@@ -1264,6 +1311,7 @@ class UploadFile(Resource):
 
 # GET requests
 api.add_resource(ImportJSONBOM, '/api/v2/ImportJSONBOM')
+api.add_resource(ImportFile, '/api/v2/ImportFile')
 api.add_resource(AllProducts, "/api/v2/AllProducts")
 api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 
