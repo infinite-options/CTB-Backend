@@ -12,6 +12,7 @@ from flask_cors import CORS
 
 import boto3
 import os.path
+import io
 
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -326,6 +327,287 @@ def get_new_productUID(conn):
 
 
 # IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
+# class ImportJSONBOM(Resource):
+#     def post(self):
+#         print("\nIn Import BOM")
+#         response = {}
+#         items = {}
+#         try:
+#             conn = connect()
+#             filepath = request.form.get('filepath')
+#             print(filepath)
+
+#             with open(filepath) as csv_file:
+#                 csv_reader = csv.reader(csv_file, delimiter=',')
+#                 print('Read csv file')
+                
+#                 # Initialize uber List
+#                 data = []
+#                 jsondata = []
+#                 parents = []
+#                 children = []
+
+#                 # Bring in each row as a List and append it to the uber List
+#                 for row in csv_reader:
+#                     data.append(row)
+
+#                 # ONLY FOR DEBUG: Print each Row within the uber List
+#                 # print('\n Data Table')
+#                 # for items in data:
+#                 #     print(data.index(items), items)
+
+
+#                 # FIND LFT AND RGT FOR EACH ITEM IN LIST
+#                 print('\nFINDING LFT')
+#                 currentLevel = 0
+#                 lft = 0
+#                 rgt = 0
+
+#                 for items in data:
+#                     # print("\nStarting on New Row")
+#                     # print(data.index(items), type(data.index(items)), items)
+#                     previousLevel = currentLevel
+#                     # print("Previous Level: ", previousLevel, type(previousLevel))
+#                     previouslft = lft
+#                     # print("Previous lft: ", previouslft, type(previouslft))
+#                     previousrgt = rgt
+#                     # print("Previous rgt: ", previousrgt, type(previousrgt))
+
+                
+#                     # If it is the zeroth element (ie Header Row) then set headers
+#                     if data.index(items) == 0:
+#                         # print(data[data.index(items)])
+
+#                         # Find Index for Level
+#                         if 'Level' in items:
+#                             levelIndex = items.index('Level')
+#                             print("Level Index: ", levelIndex)
+#                         elif 'LEVEL' in items:
+#                             levelIndex = items.index('LEVEL')
+#                             print("Level Index: ", levelIndex)
+#                         else:
+#                             print("Level does not exist")
+#                             return("Level does not exist")
+
+
+#                         # Find Index for Part Number
+#                         if 'PART NUMBER' in items:
+#                             PNIndex = items.index('PART NUMBER')
+#                             print("PN Index: ", PNIndex)
+#                         elif 'NUMBER' in items:
+#                             PNIndex = items.index('NUMBER')
+#                             print("PN Index: ", PNIndex)
+#                         elif 'Number' in items:
+#                             PNIndex = items.index('Number')
+#                             print("PN Index: ", PNIndex)
+#                         elif 'Part' in items:
+#                             PNIndex = items.index('Part')
+#                             print("PN Index: ", PNIndex)
+#                         elif 'GPN' in items:
+#                             PNIndex = items.index('GPN')
+#                             print("PN Index: ", PNIndex)
+#                         else:
+#                             print("PN does not exist")
+#                             PNIndex = -1
+                        
+
+#                         # Find Index for QTY
+#                         if 'qty' in items:
+#                             QtyIndex = items.index('qty')
+#                             print("Qty Index: ", QtyIndex)
+#                         elif 'Qty' in items:
+#                             QtyIndex = items.index('Qty')
+#                             print("Qty Index: ", QtyIndex)
+#                         elif 'QTY' in items:
+#                             QtyIndex = items.index('QTY')
+#                             print("Qty Index: ", QtyIndex)
+#                         elif 'Qty Per' in items:
+#                             QtyIndex = items.index('Qty Per')
+#                             print("Qty Index: ", QtyIndex)
+#                         else:
+#                             print("Qty does not exist")
+#                             return("Qty does not exist")
+
+
+#                         items.extend(['lft', 'rgt', 'Parent'])
+#                         # print(data.index(items), items)
+                        
+#                         lftIndex = items.index('lft')
+#                         rgtIndex = items.index('rgt')
+#                         parentIndex = items.index('Parent')
+#                         # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
+
+
+#                     # If it is the first element (ie Top Level Assembly) then set lft and rgt
+#                     elif data.index(items) == 1:
+#                         # print(data[data.index(items)])
+#                         currentLevel = 0
+#                         # print("Current Level: ", currentLevel, type(currentLevel))
+#                         lft = data.index(items)
+#                         rgt = 0
+#                         items.extend([lft, rgt, 'Parent']) 
+#                         # print(items)
+#                         # print(data.index(items), items)
+                        
+
+#                     # For the rest of the tree calc lft and rgt
+#                     elif data.index(items) > 1:
+#                         currentLevel = int(items[levelIndex])
+#                         # print("Current Level: ", currentLevel, type(currentLevel))
+#                         levelDiff = currentLevel - previousLevel
+#                         # print("Level Difference: ", levelDiff, type(levelDiff))
+#                         if levelDiff ==  1:
+#                             lft = previouslft + 1
+#                         elif levelDiff ==  0:
+#                             lft = previouslft + 2
+#                         elif levelDiff == -1:
+#                             lft = previouslft + 3
+#                         elif levelDiff == -2:
+#                             lft = previouslft + 4
+#                         elif levelDiff == -3:
+#                             lft = previouslft + 5       
+#                         elif levelDiff == -4:
+#                             lft = previouslft + 6
+#                         else:
+#                             print("Need to expand range")
+#                         # print("New lft: ", lft, type(lft))
+
+#                         rgt = 0
+#                         items.extend([lft, rgt, 'Parent']) 
+#                         # ONLY FOR DEBUG: PRINT RESULTANT TABLE WITH LFT VALUES
+#                         # print(data.index(items), items)
+
+#                 # Level MUST BE IN COLUMN 2
+#                 print('\nFINDING RGT')
+#                 currentLevel = 0
+#                 lft = 0
+#                 rgt = 0
+#                 # print(levelIndex, lftIndex)
+
+#                 for items in data[1:]:
+#                     currentRow = int(data.index(items))
+#                     currentLevel = int(items[levelIndex])
+#                     lft = int(items[lftIndex])
+#                     print("\nCurrent Level: ", currentLevel, "Current LFT: ", lft, "Current Row: ", currentRow, type(currentRow))
+                    
+#                     # If it is the first element (ie Top Level Assembly) then set lft and rgt
+#                     if currentRow == 1:
+#                         print(data[currentRow])
+#                         # currentLevel = 0
+#                         # print("Current Level: ", currentLevel, type(currentLevel))
+#                         rgt = 2 * (len(data) -1)
+#                         print("RGT is: ", rgt)
+                        
+#                     # Check if this is the last row
+#                     elif currentRow == len(data) - 1:
+#                         # print("Last Row")
+#                         print(data[currentRow])
+#                         rgt = lft + 1
+#                         print("RGT is: ", rgt)
+                        
+                        
+#                     # Check if this level is deeper than the next level
+#                     elif currentLevel >= int(data[currentRow + 1][levelIndex]):
+#                         # print("Last Child before Next Assembly")
+#                         print(data[currentRow])
+#                         rgt = lft + 1
+#                         # print("RGT is: ", rgt)
+                        
+
+#                     # If current level is above next level then find next match
+#                     else:
+#                         print("In Assembly")
+#                         print(data[currentRow])
+#                         # Compare to next rows
+#                         for remainingItems in data[(currentRow + 1):]:
+#                             print("Current Level: ", currentLevel, "Next Level: ", int(remainingItems[levelIndex]))
+#                             if int(remainingItems[levelIndex]) <= currentLevel:
+#                                 print("End Assembly")
+#                                 print(remainingItems[lftIndex])
+#                                 levelDiff = int(remainingItems[levelIndex]) - currentLevel
+#                                 print(levelDiff)
+#                                 rgt = int(remainingItems[lftIndex]) - 1 + int(levelDiff)
+#                                 print("RGT is: ", rgt)
+#                                 break
+                            
+#                             else:
+#                                 print("No Match")
+#                                 rgt = 2 * (len(data) -1) - currentLevel
+#                                 print("RGT is: ", rgt)
+
+#                     print("New rgt: ", rgt, type(rgt))
+
+#                     items[rgtIndex] = rgt
+#                     print(rgt, lft, PNIndex, items[PNIndex])
+#                     print(int(data[currentRow][levelIndex]))
+#                     print(data[currentRow][PNIndex])
+#                     print(data[currentRow][QtyIndex])
+#                     print(lft, rgt, 'Parent')
+#                     if (rgt == lft + 1 and PNIndex != -1):
+#                         print("in Child")
+#                         items[parentIndex] = 'Child'
+#                         jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
+#                         if (items[PNIndex] not in children):
+#                             children.append(items[PNIndex])
+                       
+#                     elif (rgt != lft + 1 and PNIndex != -1):
+#                         print("in Parent")
+#                         jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
+#                         if (items[PNIndex] not in parents):
+#                             parents.append(items[PNIndex])
+                        
+#                     # print(data.index(items), items)
+
+#                 # ONLY FOR DEBUG: PRINT RESULTANT TABLE IN READABLE FORMAT
+#                 # Print each Row within the uber List
+#                 # print('\n Resulting Data Table')
+#                 # for items in data:
+#                 #     print(data.index(items), items)
+                    
+
+#                 dataBOM = json.dumps(data)
+#                 # print(dataBOM)
+#                 jsonBOM = json.dumps(jsondata)
+#                 # print(jsondata)
+#                 jsonparents = json.dumps(parents)
+#                 # print("parents: ", parents)
+#                 jsonchildren = json.dumps(children)
+#                 # print("children: ", children)
+                
+
+#             # Call stored procedure to get new product UID
+
+
+#             new_product_uid = get_new_productUID(conn)
+#             print(new_product_uid)
+#             print(getNow())
+#             product_desc = filepath
+
+#             # Run query to enter new product UID and BOM into table
+#             productquery =  '''
+#                 INSERT INTO pmctb.products
+#                 SET product_uid = \'''' + new_product_uid + '''\',
+#                     product_created = \'''' + getNow() + '''\',
+#                     product_desc = \'''' + product_desc + '''\',
+#                     product_BOM = \'''' + jsonBOM + '''\',
+#                     product_parents = \'''' + jsonparents + '''\',
+#                     product_children = \'''' + jsonchildren + '''\'
+#                 '''
+
+#             items = execute(productquery, "post", conn)
+#             print("items: ", items)
+
+            
+
+#             return(new_product_uid)
+#         except:
+#             print("Something went wrong")
+#         finally:
+#             disconnect(conn)
+
+
+
+
 class ImportJSONBOM(Resource):
     def post(self):
         print("\nIn Import BOM")
@@ -333,245 +615,254 @@ class ImportJSONBOM(Resource):
         items = {}
         try:
             conn = connect()
-            filepath = request.form.get('filepath')
-            print(filepath)
+            # filepath = request.form.get('filepath')
+            # print(filepath)
 
-            with open(filepath) as csv_file:
-                csv_reader = csv.reader(csv_file, delimiter=',')
-                print('Read csv file')
+            # with open(filepath) as csv_file:
+            #     csv_reader = csv.reader(csv_file, delimiter=',')
+            #     print('Read csv file')
                 
                 # Initialize uber List
-                data = []
-                jsondata = []
-                parents = []
-                children = []
+            data = []
+            jsondata = []
+            parents = []
+            children = []
 
                 # Bring in each row as a List and append it to the uber List
-                for row in csv_reader:
-                    data.append(row)
+                # for row in csv_reader:
+                #     data.append(row)
 
-                # ONLY FOR DEBUG: Print each Row within the uber List
-                # print('\n Data Table')
-                # for items in data:
-                #     print(data.index(items), items)
+            filepath = request.files['filepath']
+            stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
 
-
-                # FIND LFT AND RGT FOR EACH ITEM IN LIST
-                print('\nFINDING LFT')
-                currentLevel = 0
-                lft = 0
-                rgt = 0
-
-                for items in data:
-                    # print("\nStarting on New Row")
-                    # print(data.index(items), type(data.index(items)), items)
-                    previousLevel = currentLevel
-                    # print("Previous Level: ", previousLevel, type(previousLevel))
-                    previouslft = lft
-                    # print("Previous lft: ", previouslft, type(previouslft))
-                    previousrgt = rgt
-                    # print("Previous rgt: ", previousrgt, type(previousrgt))
-
-                
-                    # If it is the zeroth element (ie Header Row) then set headers
-                    if data.index(items) == 0:
-                        # print(data[data.index(items)])
-
-                        # Find Index for Level
-                        if 'Level' in items:
-                            levelIndex = items.index('Level')
-                            print("Level Index: ", levelIndex)
-                        elif 'LEVEL' in items:
-                            levelIndex = items.index('LEVEL')
-                            print("Level Index: ", levelIndex)
-                        else:
-                            print("Level does not exist")
-                            return("Level does not exist")
+            csv_input = csv.reader(stream)
+            for row in csv_input:
+                print(row)
+                data.append(row)
 
 
-                        # Find Index for Part Number
-                        if 'PART NUMBER' in items:
-                            PNIndex = items.index('PART NUMBER')
-                            print("PN Index: ", PNIndex)
-                        elif 'NUMBER' in items:
-                            PNIndex = items.index('NUMBER')
-                            print("PN Index: ", PNIndex)
-                        elif 'Number' in items:
-                            PNIndex = items.index('Number')
-                            print("PN Index: ", PNIndex)
-                        elif 'Part' in items:
-                            PNIndex = items.index('Part')
-                            print("PN Index: ", PNIndex)
-                        elif 'GPN' in items:
-                            PNIndex = items.index('GPN')
-                            print("PN Index: ", PNIndex)
-                        else:
-                            print("PN does not exist")
-                            PNIndex = -1
-                        
-
-                        # Find Index for QTY
-                        if 'qty' in items:
-                            QtyIndex = items.index('qty')
-                            print("Qty Index: ", QtyIndex)
-                        elif 'Qty' in items:
-                            QtyIndex = items.index('Qty')
-                            print("Qty Index: ", QtyIndex)
-                        elif 'QTY' in items:
-                            QtyIndex = items.index('QTY')
-                            print("Qty Index: ", QtyIndex)
-                        elif 'Qty Per' in items:
-                            QtyIndex = items.index('Qty Per')
-                            print("Qty Index: ", QtyIndex)
-                        else:
-                            print("Qty does not exist")
-                            return("Qty does not exist")
+            # ONLY FOR DEBUG: Print each Row within the uber List
+            # print('\n Data Table')
+            # for items in data:
+            #     print(data.index(items), items)
 
 
-                        items.extend(['lft', 'rgt', 'Parent'])
-                        # print(data.index(items), items)
-                        
-                        lftIndex = items.index('lft')
-                        rgtIndex = items.index('rgt')
-                        parentIndex = items.index('Parent')
-                        # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
+            # FIND LFT AND RGT FOR EACH ITEM IN LIST
+            print('\nFINDING LFT')
+            currentLevel = 0
+            lft = 0
+            rgt = 0
 
+            for items in data:
+                # print("\nStarting on New Row")
+                # print(data.index(items), type(data.index(items)), items)
+                previousLevel = currentLevel
+                # print("Previous Level: ", previousLevel, type(previousLevel))
+                previouslft = lft
+                # print("Previous lft: ", previouslft, type(previouslft))
+                previousrgt = rgt
+                # print("Previous rgt: ", previousrgt, type(previousrgt))
 
-                    # If it is the first element (ie Top Level Assembly) then set lft and rgt
-                    elif data.index(items) == 1:
-                        # print(data[data.index(items)])
-                        currentLevel = 0
-                        # print("Current Level: ", currentLevel, type(currentLevel))
-                        lft = data.index(items)
-                        rgt = 0
-                        items.extend([lft, rgt, 'Parent']) 
-                        # print(items)
-                        # print(data.index(items), items)
-                        
+            
+                # If it is the zeroth element (ie Header Row) then set headers
+                if data.index(items) == 0:
+                    # print(data[data.index(items)])
 
-                    # For the rest of the tree calc lft and rgt
-                    elif data.index(items) > 1:
-                        currentLevel = int(items[levelIndex])
-                        # print("Current Level: ", currentLevel, type(currentLevel))
-                        levelDiff = currentLevel - previousLevel
-                        # print("Level Difference: ", levelDiff, type(levelDiff))
-                        if levelDiff ==  1:
-                            lft = previouslft + 1
-                        elif levelDiff ==  0:
-                            lft = previouslft + 2
-                        elif levelDiff == -1:
-                            lft = previouslft + 3
-                        elif levelDiff == -2:
-                            lft = previouslft + 4
-                        elif levelDiff == -3:
-                            lft = previouslft + 5       
-                        elif levelDiff == -4:
-                            lft = previouslft + 6
-                        else:
-                            print("Need to expand range")
-                        # print("New lft: ", lft, type(lft))
-
-                        rgt = 0
-                        items.extend([lft, rgt, 'Parent']) 
-                        # ONLY FOR DEBUG: PRINT RESULTANT TABLE WITH LFT VALUES
-                        # print(data.index(items), items)
-
-                # Level MUST BE IN COLUMN 2
-                print('\nFINDING RGT')
-                currentLevel = 0
-                lft = 0
-                rgt = 0
-                # print(levelIndex, lftIndex)
-
-                for items in data[1:]:
-                    currentRow = int(data.index(items))
-                    currentLevel = int(items[levelIndex])
-                    lft = int(items[lftIndex])
-                    print("\nCurrent Level: ", currentLevel, "Current LFT: ", lft, "Current Row: ", currentRow, type(currentRow))
-                    
-                    # If it is the first element (ie Top Level Assembly) then set lft and rgt
-                    if currentRow == 1:
-                        print(data[currentRow])
-                        # currentLevel = 0
-                        # print("Current Level: ", currentLevel, type(currentLevel))
-                        rgt = 2 * (len(data) -1)
-                        print("RGT is: ", rgt)
-                        
-                    # Check if this is the last row
-                    elif currentRow == len(data) - 1:
-                        # print("Last Row")
-                        print(data[currentRow])
-                        rgt = lft + 1
-                        print("RGT is: ", rgt)
-                        
-                        
-                    # Check if this level is deeper than the next level
-                    elif currentLevel >= int(data[currentRow + 1][levelIndex]):
-                        # print("Last Child before Next Assembly")
-                        print(data[currentRow])
-                        rgt = lft + 1
-                        # print("RGT is: ", rgt)
-                        
-
-                    # If current level is above next level then find next match
+                    # Find Index for Level
+                    if 'Level' in items:
+                        levelIndex = items.index('Level')
+                        print("Level Index: ", levelIndex)
+                    elif 'LEVEL' in items:
+                        levelIndex = items.index('LEVEL')
+                        print("Level Index: ", levelIndex)
                     else:
-                        print("In Assembly")
-                        print(data[currentRow])
-                        # Compare to next rows
-                        for remainingItems in data[(currentRow + 1):]:
-                            print("Current Level: ", currentLevel, "Next Level: ", int(remainingItems[levelIndex]))
-                            if int(remainingItems[levelIndex]) <= currentLevel:
-                                print("End Assembly")
-                                print(remainingItems[lftIndex])
-                                levelDiff = int(remainingItems[levelIndex]) - currentLevel
-                                print(levelDiff)
-                                rgt = int(remainingItems[lftIndex]) - 1 + int(levelDiff)
-                                print("RGT is: ", rgt)
-                                break
-                            
-                            else:
-                                print("No Match")
-                                rgt = 2 * (len(data) -1) - currentLevel
-                                print("RGT is: ", rgt)
+                        print("Level does not exist")
+                        return("Level does not exist")
 
-                    print("New rgt: ", rgt, type(rgt))
 
-                    items[rgtIndex] = rgt
-                    print(rgt, lft, PNIndex, items[PNIndex])
-                    print(int(data[currentRow][levelIndex]))
-                    print(data[currentRow][PNIndex])
-                    print(data[currentRow][QtyIndex])
-                    print(lft, rgt, 'Parent')
-                    if (rgt == lft + 1 and PNIndex != -1):
-                        print("in Child")
-                        items[parentIndex] = 'Child'
-                        jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
-                        if (items[PNIndex] not in children):
-                            children.append(items[PNIndex])
-                       
-                    elif (rgt != lft + 1 and PNIndex != -1):
-                        print("in Parent")
-                        jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
-                        if (items[PNIndex] not in parents):
-                            parents.append(items[PNIndex])
-                        
+                    # Find Index for Part Number
+                    if 'PART NUMBER' in items:
+                        PNIndex = items.index('PART NUMBER')
+                        print("PN Index: ", PNIndex)
+                    elif 'NUMBER' in items:
+                        PNIndex = items.index('NUMBER')
+                        print("PN Index: ", PNIndex)
+                    elif 'Number' in items:
+                        PNIndex = items.index('Number')
+                        print("PN Index: ", PNIndex)
+                    elif 'Part' in items:
+                        PNIndex = items.index('Part')
+                        print("PN Index: ", PNIndex)
+                    elif 'GPN' in items:
+                        PNIndex = items.index('GPN')
+                        print("PN Index: ", PNIndex)
+                    else:
+                        print("PN does not exist")
+                        PNIndex = -1
+                    
+
+                    # Find Index for QTY
+                    if 'qty' in items:
+                        QtyIndex = items.index('qty')
+                        print("Qty Index: ", QtyIndex)
+                    elif 'Qty' in items:
+                        QtyIndex = items.index('Qty')
+                        print("Qty Index: ", QtyIndex)
+                    elif 'QTY' in items:
+                        QtyIndex = items.index('QTY')
+                        print("Qty Index: ", QtyIndex)
+                    elif 'Qty Per' in items:
+                        QtyIndex = items.index('Qty Per')
+                        print("Qty Index: ", QtyIndex)
+                    else:
+                        print("Qty does not exist")
+                        return("Qty does not exist")
+
+
+                    items.extend(['lft', 'rgt', 'Parent'])
+                    # print(data.index(items), items)
+                    
+                    lftIndex = items.index('lft')
+                    rgtIndex = items.index('rgt')
+                    parentIndex = items.index('Parent')
+                    # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
+
+
+                # If it is the first element (ie Top Level Assembly) then set lft and rgt
+                elif data.index(items) == 1:
+                    # print(data[data.index(items)])
+                    currentLevel = 0
+                    # print("Current Level: ", currentLevel, type(currentLevel))
+                    lft = data.index(items)
+                    rgt = 0
+                    items.extend([lft, rgt, 'Parent']) 
+                    # print(items)
+                    # print(data.index(items), items)
+                    
+
+                # For the rest of the tree calc lft and rgt
+                elif data.index(items) > 1:
+                    currentLevel = int(items[levelIndex])
+                    # print("Current Level: ", currentLevel, type(currentLevel))
+                    levelDiff = currentLevel - previousLevel
+                    # print("Level Difference: ", levelDiff, type(levelDiff))
+                    if levelDiff ==  1:
+                        lft = previouslft + 1
+                    elif levelDiff ==  0:
+                        lft = previouslft + 2
+                    elif levelDiff == -1:
+                        lft = previouslft + 3
+                    elif levelDiff == -2:
+                        lft = previouslft + 4
+                    elif levelDiff == -3:
+                        lft = previouslft + 5       
+                    elif levelDiff == -4:
+                        lft = previouslft + 6
+                    else:
+                        print("Need to expand range")
+                    # print("New lft: ", lft, type(lft))
+
+                    rgt = 0
+                    items.extend([lft, rgt, 'Parent']) 
+                    # ONLY FOR DEBUG: PRINT RESULTANT TABLE WITH LFT VALUES
                     # print(data.index(items), items)
 
-                # ONLY FOR DEBUG: PRINT RESULTANT TABLE IN READABLE FORMAT
-                # Print each Row within the uber List
-                # print('\n Resulting Data Table')
-                # for items in data:
-                #     print(data.index(items), items)
+            # Level MUST BE IN COLUMN 2
+            print('\nFINDING RGT')
+            currentLevel = 0
+            lft = 0
+            rgt = 0
+            # print(levelIndex, lftIndex)
+
+            for items in data[1:]:
+                currentRow = int(data.index(items))
+                currentLevel = int(items[levelIndex])
+                lft = int(items[lftIndex])
+                print("\nCurrent Level: ", currentLevel, "Current LFT: ", lft, "Current Row: ", currentRow, type(currentRow))
+                
+                # If it is the first element (ie Top Level Assembly) then set lft and rgt
+                if currentRow == 1:
+                    print(data[currentRow])
+                    # currentLevel = 0
+                    # print("Current Level: ", currentLevel, type(currentLevel))
+                    rgt = 2 * (len(data) -1)
+                    print("RGT is: ", rgt)
+                    
+                # Check if this is the last row
+                elif currentRow == len(data) - 1:
+                    # print("Last Row")
+                    print(data[currentRow])
+                    rgt = lft + 1
+                    print("RGT is: ", rgt)
+                    
+                    
+                # Check if this level is deeper than the next level
+                elif currentLevel >= int(data[currentRow + 1][levelIndex]):
+                    # print("Last Child before Next Assembly")
+                    print(data[currentRow])
+                    rgt = lft + 1
+                    # print("RGT is: ", rgt)
                     
 
-                dataBOM = json.dumps(data)
-                # print(dataBOM)
-                jsonBOM = json.dumps(jsondata)
-                # print(jsondata)
-                jsonparents = json.dumps(parents)
-                # print("parents: ", parents)
-                jsonchildren = json.dumps(children)
-                # print("children: ", children)
+                # If current level is above next level then find next match
+                else:
+                    print("In Assembly")
+                    print(data[currentRow])
+                    # Compare to next rows
+                    for remainingItems in data[(currentRow + 1):]:
+                        print("Current Level: ", currentLevel, "Next Level: ", int(remainingItems[levelIndex]))
+                        if int(remainingItems[levelIndex]) <= currentLevel:
+                            print("End Assembly")
+                            print(remainingItems[lftIndex])
+                            levelDiff = int(remainingItems[levelIndex]) - currentLevel
+                            print(levelDiff)
+                            rgt = int(remainingItems[lftIndex]) - 1 + int(levelDiff)
+                            print("RGT is: ", rgt)
+                            break
+                        
+                        else:
+                            print("No Match")
+                            rgt = 2 * (len(data) -1) - currentLevel
+                            print("RGT is: ", rgt)
+
+                print("New rgt: ", rgt, type(rgt))
+
+                items[rgtIndex] = rgt
+                print(rgt, lft, PNIndex, items[PNIndex])
+                print(int(data[currentRow][levelIndex]))
+                print(data[currentRow][PNIndex])
+                print(data[currentRow][QtyIndex])
+                print(lft, rgt, 'Parent')
+                if (rgt == lft + 1 and PNIndex != -1):
+                    print("in Child")
+                    items[parentIndex] = 'Child'
+                    jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
+                    if (items[PNIndex] not in children):
+                        children.append(items[PNIndex])
+                    
+                elif (rgt != lft + 1 and PNIndex != -1):
+                    print("in Parent")
+                    jsondata.extend([{'Level':int(data[currentRow][levelIndex]), 'PN':data[currentRow][PNIndex], 'Qty':data[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
+                    if (items[PNIndex] not in parents):
+                        parents.append(items[PNIndex])
+                    
+                # print(data.index(items), items)
+
+            # ONLY FOR DEBUG: PRINT RESULTANT TABLE IN READABLE FORMAT
+            # Print each Row within the uber List
+            # print('\n Resulting Data Table')
+            # for items in data:
+            #     print(data.index(items), items)
+                
+
+            dataBOM = json.dumps(data)
+            # print(dataBOM)
+            jsonBOM = json.dumps(jsondata)
+            print(jsondata)
+            jsonparents = json.dumps(parents)
+            print("parents: ", parents)
+            jsonchildren = json.dumps(children)
+            print("children: ", children)
                 
 
             # Call stored procedure to get new product UID
@@ -580,7 +871,8 @@ class ImportJSONBOM(Resource):
             new_product_uid = get_new_productUID(conn)
             print(new_product_uid)
             print(getNow())
-            product_desc = filepath
+            product_desc = filepath.filename
+            print(product_desc)
 
             # Run query to enter new product UID and BOM into table
             productquery =  '''
@@ -604,6 +896,272 @@ class ImportJSONBOM(Resource):
         finally:
             disconnect(conn)
 
+def TraverseTable(file, filename):
+    print("\nIn Traverse Table")
+    response = {}
+    items = {}
+    try:
+        conn = connect()
+
+        jsondata = []
+        parents = []
+        children = []
+        
+        # ONLY FOR DEBUG: Print each Row within the uber List
+        print('\n Data Table')
+        for items in file:
+            print(file.index(items), items)
+
+
+        # FIND LFT AND RGT FOR EACH ITEM IN LIST
+        print('\nFINDING LFT')
+        currentLevel = 0
+        lft = 0
+        rgt = 0
+
+        for items in file:
+            # print("\nStarting on New Row")
+            # print(data.index(items), type(data.index(items)), items)
+            previousLevel = currentLevel
+            # print("Previous Level: ", previousLevel, type(previousLevel))
+            previouslft = lft
+            # print("Previous lft: ", previouslft, type(previouslft))
+            previousrgt = rgt
+            # print("Previous rgt: ", previousrgt, type(previousrgt))
+
+        
+            # If it is the zeroth element (ie Header Row) then set headers
+            if file.index(items) == 0:
+                # print(data[data.index(items)])
+
+                # Find Index for Level
+                if 'Level' in items:
+                    levelIndex = items.index('Level')
+                    print("Level Index: ", levelIndex)
+                elif 'LEVEL' in items:
+                    levelIndex = items.index('LEVEL')
+                    print("Level Index: ", levelIndex)
+                else:
+                    print("Level does not exist")
+                    return("Level does not exist")
+
+
+                # Find Index for Part Number
+                if 'PART NUMBER' in items:
+                    PNIndex = items.index('PART NUMBER')
+                    print("PN Index: ", PNIndex)
+                elif 'NUMBER' in items:
+                    PNIndex = items.index('NUMBER')
+                    print("PN Index: ", PNIndex)
+                elif 'Number' in items:
+                    PNIndex = items.index('Number')
+                    print("PN Index: ", PNIndex)
+                elif 'Part' in items:
+                    PNIndex = items.index('Part')
+                    print("PN Index: ", PNIndex)
+                elif 'GPN' in items:
+                    PNIndex = items.index('GPN')
+                    print("PN Index: ", PNIndex)
+                else:
+                    print("PN does not exist")
+                    PNIndex = -1
+                
+
+                # Find Index for QTY
+                if 'qty' in items:
+                    QtyIndex = items.index('qty')
+                    print("Qty Index: ", QtyIndex)
+                elif 'Qty' in items:
+                    QtyIndex = items.index('Qty')
+                    print("Qty Index: ", QtyIndex)
+                elif 'QTY' in items:
+                    QtyIndex = items.index('QTY')
+                    print("Qty Index: ", QtyIndex)
+                elif 'Qty Per' in items:
+                    QtyIndex = items.index('Qty Per')
+                    print("Qty Index: ", QtyIndex)
+                else:
+                    print("Qty does not exist")
+                    return("Qty does not exist")
+
+
+                items.extend(['lft', 'rgt', 'Parent'])
+                # print(data.index(items), items)
+                
+                lftIndex = items.index('lft')
+                rgtIndex = items.index('rgt')
+                parentIndex = items.index('Parent')
+                # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
+
+
+            # If it is the first element (ie Top Level Assembly) then set lft and rgt
+            elif file.index(items) == 1:
+                # print(data[data.index(items)])
+                currentLevel = 0
+                # print("Current Level: ", currentLevel, type(currentLevel))
+                lft = file.index(items)
+                rgt = 0
+                items.extend([lft, rgt, 'Parent']) 
+                # print(items)
+                # print(data.index(items), items)
+                
+
+            # For the rest of the tree calc lft and rgt
+            elif file.index(items) > 1:
+                currentLevel = int(items[levelIndex])
+                # print("Current Level: ", currentLevel, type(currentLevel))
+                levelDiff = currentLevel - previousLevel
+                # print("Level Difference: ", levelDiff, type(levelDiff))
+                if levelDiff ==  1:
+                    lft = previouslft + 1
+                elif levelDiff ==  0:
+                    lft = previouslft + 2
+                elif levelDiff == -1:
+                    lft = previouslft + 3
+                elif levelDiff == -2:
+                    lft = previouslft + 4
+                elif levelDiff == -3:
+                    lft = previouslft + 5       
+                elif levelDiff == -4:
+                    lft = previouslft + 6
+                else:
+                    print("Need to expand range")
+                # print("New lft: ", lft, type(lft))
+
+                rgt = 0
+                items.extend([lft, rgt, 'Parent']) 
+                # ONLY FOR DEBUG: PRINT RESULTANT TABLE WITH LFT VALUES
+                # print(data.index(items), items)
+
+        # Level MUST BE IN COLUMN 2
+        print('\nFINDING RGT')
+        currentLevel = 0
+        lft = 0
+        rgt = 0
+        # print(levelIndex, lftIndex)
+
+        for items in file[1:]:
+            currentRow = int(file.index(items))
+            currentLevel = int(items[levelIndex])
+            lft = int(items[lftIndex])
+            print("\nCurrent Level: ", currentLevel, "Current LFT: ", lft, "Current Row: ", currentRow, type(currentRow))
+            
+            # If it is the first element (ie Top Level Assembly) then set lft and rgt
+            if currentRow == 1:
+                print(file[currentRow])
+                # currentLevel = 0
+                # print("Current Level: ", currentLevel, type(currentLevel))
+                rgt = 2 * (len(file) -1)
+                print("RGT is: ", rgt)
+                
+            # Check if this is the last row
+            elif currentRow == len(data) - 1:
+                # print("Last Row")
+                print(file[currentRow])
+                rgt = lft + 1
+                print("RGT is: ", rgt)
+                
+                
+            # Check if this level is deeper than the next level
+            elif currentLevel >= int(file[currentRow + 1][levelIndex]):
+                # print("Last Child before Next Assembly")
+                print(file[currentRow])
+                rgt = lft + 1
+                # print("RGT is: ", rgt)
+                
+
+            # If current level is above next level then find next match
+            else:
+                print("In Assembly")
+                print(file[currentRow])
+                # Compare to next rows
+                for remainingItems in file[(currentRow + 1):]:
+                    print("Current Level: ", currentLevel, "Next Level: ", int(remainingItems[levelIndex]))
+                    if int(remainingItems[levelIndex]) <= currentLevel:
+                        print("End Assembly")
+                        print(remainingItems[lftIndex])
+                        levelDiff = int(remainingItems[levelIndex]) - currentLevel
+                        print(levelDiff)
+                        rgt = int(remainingItems[lftIndex]) - 1 + int(levelDiff)
+                        print("RGT is: ", rgt)
+                        break
+                    
+                    else:
+                        print("No Match")
+                        rgt = 2 * (len(file) -1) - currentLevel
+                        print("RGT is: ", rgt)
+
+            print("New rgt: ", rgt, type(rgt))
+
+            items[rgtIndex] = rgt
+            print(rgt, lft, PNIndex, items[PNIndex])
+            print(int(file[currentRow][levelIndex]))
+            print(file[currentRow][PNIndex])
+            print(file[currentRow][QtyIndex])
+            print(lft, rgt, 'Parent')
+            if (rgt == lft + 1 and PNIndex != -1):
+                print("in Child")
+                items[parentIndex] = 'Child'
+                jsondata.extend([{'Level':int(file[currentRow][levelIndex]), 'PN':file[currentRow][PNIndex], 'Qty':file[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
+                if (items[PNIndex] not in children):
+                    children.append(items[PNIndex])
+                
+            elif (rgt != lft + 1 and PNIndex != -1):
+                print("in Parent")
+                jsondata.extend([{'Level':int(file[currentRow][levelIndex]), 'PN':file[currentRow][PNIndex], 'Qty':file[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
+                if (items[PNIndex] not in parents):
+                    parents.append(items[PNIndex])
+                
+            # print(data.index(items), items)
+
+        # ONLY FOR DEBUG: PRINT RESULTANT TABLE IN READABLE FORMAT
+        # Print each Row within the uber List
+        # print('\n Resulting Data Table')
+        # for items in data:
+        #     print(data.index(items), items)
+            
+
+        dataBOM = json.dumps(file)
+        # print(dataBOM)
+        jsonBOM = json.dumps(jsondata)
+        print(jsondata)
+        jsonparents = json.dumps(parents)
+        print("parents: ", parents)
+        jsonchildren = json.dumps(children)
+        print("children: ", children)
+            
+
+        # Call stored procedure to get new product UID
+
+
+        new_product_uid = get_new_productUID(conn)
+        print(new_product_uid)
+        print(getNow())
+        product_desc = filename
+        print(product_desc)
+
+        # Run query to enter new product UID and BOM into table
+        productquery =  '''
+            INSERT INTO pmctb.products
+            SET product_uid = \'''' + new_product_uid + '''\',
+                product_created = \'''' + getNow() + '''\',
+                product_desc = \'''' + product_desc + '''\',
+                product_BOM = \'''' + jsonBOM + '''\',
+                product_parents = \'''' + jsonparents + '''\',
+                product_children = \'''' + jsonchildren + '''\'
+            '''
+
+        items = execute(productquery, "post", conn)
+        print("items: ", items)
+
+        
+
+        return(new_product_uid)
+    except:
+        print("Something went wrong")
+    finally:
+        disconnect(conn)
+        
 
 
 
@@ -660,7 +1218,32 @@ class Products(Resource):
             disconnect(conn)
 
 
+class UploadFile(Resource):
+    def post(self):
+        print("Inside UploadFile")
+        import csv
+        import urllib
+        response = {}
+        items = {}
 
+        try:
+            conn = connect()
+            upload_data = []
+
+            f = request.files['filepath']
+            stream = io.StringIO(f.stream.read().decode("UTF8"), newline=None)
+
+            csv_input = csv.reader(stream)
+            for row in csv_input:
+                print(row)
+                upload_data.append(row)
+
+            return(upload_data)
+
+        except:
+            raise BadRequest('Upload File Request failed')
+        finally:
+            disconnect(conn)
 
 
 
@@ -684,7 +1267,7 @@ api.add_resource(ImportJSONBOM, '/api/v2/ImportJSONBOM')
 api.add_resource(AllProducts, "/api/v2/AllProducts")
 api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 
-
+api.add_resource(UploadFile, "/api/v2/UploadFile")
 
 
 if __name__ == '__main__':
