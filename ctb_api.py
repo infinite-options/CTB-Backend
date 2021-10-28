@@ -613,7 +613,7 @@ class ImportJSONBOM(Resource):
 
 
 # IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
-class ImportFile(Resource):
+class ImportFileBOM(Resource):
     def post(self):
         print("\nIn Import File")
         response = {}
@@ -644,6 +644,37 @@ class ImportFile(Resource):
 
 
 
+class ImportFile(Resource):
+    def post(self):
+        print("\nIn Import File")
+        response = {}
+        items = {}
+        try:
+            conn = connect()
+                    
+            # Initialize uber List
+            data = []
+
+            filepath = request.files['filepath']
+            stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
+            # print(filepath.filename)
+
+            csv_input = csv.reader(stream)
+            for row in csv_input:
+                data.append(row)
+                # print(row)
+
+            product = TraverseTable(data, filepath.filename)
+
+            return(product)
+
+        except:
+            print("Something went wrong")
+        finally:
+            disconnect(conn)
+
+
+# Same as ImportFile but accepts a filepath.  Only works via Postman
 class ImportPath(Resource):
     def post(self):
         print("\nIn Import Path")
@@ -665,7 +696,7 @@ class ImportPath(Resource):
                 # Bring in each row as a List and append it to the uber List
                 for row in csv_reader:
                     data.append(row)
-                    print(row)
+                    # print(row)
 
             product = TraverseTable(data, filepath)
 
@@ -702,6 +733,7 @@ def TraverseTable(file, filename):
         lft = 0
         rgt = 0
 
+        # FIND LFT
         for items in file:
             # print("\nStarting on New Row")
             # print(data.index(items), type(data.index(items)), items)
@@ -712,7 +744,7 @@ def TraverseTable(file, filename):
             previousrgt = rgt
             # print("Previous rgt: ", previousrgt, type(previousrgt))
 
-        
+            
             # If it is the zeroth element (ie Header Row) then set headers
             if file.index(items) == 0:
                 # print(data[data.index(items)])
@@ -776,7 +808,7 @@ def TraverseTable(file, filename):
                 parentIndex = items.index('Parent')
                 # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
 
-
+            
             # If it is the first element (ie Top Level Assembly) then set lft and rgt
             elif file.index(items) == 1:
                 # print(data[data.index(items)])
@@ -816,7 +848,8 @@ def TraverseTable(file, filename):
                 # ONLY FOR DEBUG: PRINT RESULTANT TABLE WITH LFT VALUES
                 # print(data.index(items), items)
 
-        # Level MUST BE IN COLUMN 2
+
+        # FIND RGT
         print('\nFINDING RGT')
         currentLevel = 0
         lft = 0
@@ -915,8 +948,6 @@ def TraverseTable(file, filename):
             
 
         # Call stored procedure to get new product UID
-
-
         new_product_uid = get_new_productUID(conn)
         print(new_product_uid)
         print(getNow())
@@ -937,9 +968,8 @@ def TraverseTable(file, filename):
         items = execute(productquery, "post", conn)
         print("items: ", items)
 
-        
-
         return(new_product_uid)
+        
     except:
         print("Something went wrong")
     finally:
@@ -958,7 +988,7 @@ class AllProducts(Resource):
             conn = connect()
             print("Inside try block")
 
-            # CALCULATE AVAILABLE TIME SLOTS
+            # Get All Product Data
             query = """
                     SELECT * 
                     FROM pmctb.products;
@@ -984,7 +1014,7 @@ class Products(Resource):
             conn = connect()
             print("Inside try block")
 
-            # CALCULATE AVAILABLE TIME SLOTS
+            # Get Product Specific Data
             query = """
                     SELECT * 
                     FROM pmctb.products 
@@ -999,6 +1029,135 @@ class Products(Resource):
             raise BadRequest('Products Request failed, please try again later.')
         finally:
             disconnect(conn)
+
+
+class GetBOM(Resource):
+    def post(self):
+        print("\nInside GetBOM")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
+            product_uid = data["product_uid"]
+
+            # Get Product Specific Data
+            query = """
+                    SELECT * 
+                    FROM pmctb.products 
+                    WHERE product_uid = '""" + product_uid + """';
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
+        
+        except:
+            raise BadRequest('Products Request failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+class RunCTB(Resource):
+    def post(self):
+        print("\nInside Run CTB")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            BOM = BOMEngine(product_uid)
+            # Get Product Specific Data
+            print("in 2nd query")
+            query = """
+                    SELECT * 
+                    FROM pmctb.BOMTest;
+                    """
+            print(query)
+            products = execute(query, 'post', conn)
+
+            # return products['result']
+            print(BOM)
+            return(products)
+        
+        except:
+            raise BadRequest('Run CTB failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+
+# class CreateTempBOM(Resource):
+
+
+def BOMEngine(product_uid):
+    try:
+        conn = connect()
+        print("Inside try block")
+        # data = request.get_json(force=True)
+        # print("Received:", data)
+        # product_uid = data["product_uid"]
+        print("pruduct_uid:", product_uid)
+
+
+        query = """
+                    DROP VIEW pmctb.BOMTEST;
+                """
+
+        products = execute(query, 'post', conn)
+        print(products)
+        print("Done with one")
+
+        # Get Product Specific Data
+        query = """
+                    CREATE VIEW pmctb.BOMTEST AS (
+                    SELECT 
+                        CONCAT(product_uid, "-", BOM_id) AS BOM_uid,
+                        BOM_Level,
+                        BOM_pn,
+                        BOM_qty,
+                        BOM_lft,
+                        BOM_rgt,
+                        BOM_Parent
+                    FROM (
+                        SELECT *
+                        FROM pmctb.products AS p,
+                        JSON_TABLE (p.product_BOM, '$[*]'
+                            COLUMNS (
+                                    BOM_id FOR ORDINALITY,
+                                    BOM_pn VARCHAR(255) PATH '$.PN',
+                                    BOM_qty DOUBLE PATH '$.Qty',
+                                    BOM_lft INT PATH '$.lft',
+                                    BOM_rgt INT PATH '$.rgt',
+                                    BOM_Level INT PATH '$.Level',
+                                    BOM_Parent VARCHAR(255) PATH '$.Parent')
+                                    ) AS BOM
+                    WHERE product_uid = "310-000061"
+                    
+                        ) AS BOM)
+                    """
+
+        products = execute(query, 'get', conn)
+        print("success")
+        print(products)
+
+        return products['result']
+    
+    except:
+        raise BadRequest('BOM Engine failed, please try again later.')
+    finally:
+        disconnect(conn)
+
+
 
 
 class UploadFile(Resource):
@@ -1051,6 +1210,8 @@ api.add_resource(ImportFile, '/api/v2/ImportFile')
 api.add_resource(ImportPath, '/api/v2/ImportPath')
 api.add_resource(AllProducts, "/api/v2/AllProducts")
 api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
+api.add_resource(GetBOM, "/api/v2/GetBOM")
+api.add_resource(RunCTB, "/api/v2/RunCTB")
 
 api.add_resource(UploadFile, "/api/v2/UploadFile")
 
