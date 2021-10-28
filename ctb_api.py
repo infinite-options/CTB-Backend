@@ -1075,18 +1075,42 @@ class RunCTB(Resource):
             product_uid = data["product_uid"]
             print("product_uid:", product_uid)
 
-            BOM = BOMEngine(product_uid)
+            CreateBOMView(product_uid)
             # Get Product Specific Data
             print("in 2nd query")
             query = """
-                    SELECT * FROM pmctb.BOMTEST;
+                    SELECT
+                        grandparent_lvl.BOM_level    
+                        , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
+                        , grandparent_lvl.BOM_lft as gp_lft    
+                        , child_lvl.BOM_pn as Child_pn 
+                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_qty as Qty_per
+                        , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty  
+                    FROM    
+                        pmctb.BOMView grandparent_lvl  -- Need names to distinguish tables from one another
+                        , pmctb.BOMView parent_lvl 
+                        , pmctb.BOMView child_lvl    
+                    WHERE    
+                        ((parent_lvl.BOM_lft) Between (grandparent_lvl.BOM_lft+1) And (grandparent_lvl.BOM_rgt))     
+                        AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                     
+                        AND ((child_lvl.BOM_lft) Between (parent_lvl.BOM_lft) And (parent_lvl.BOM_rgt) )     
+                    GROUP BY    
+                        grandparent_lvl.BOM_level   
+                        , grandparent_lvl.BOM_pn 
+                        , grandparent_lvl.BOM_lft    
+                        , child_lvl.BOM_pn    
+                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_qty    
+                    ORDER BY    
+                        grandparent_lvl.BOM_level
+                        , grandparent_lvl.BOM_pn    
+                        , child_lvl.BOM_lft 
                     """
             print(query)
-            products = execute(query, 'get', conn)
+            ctb = execute(query, 'get', conn)
 
-            # return products['result']
-            print(BOM)
-            return products['result']
+            return ctb['result']
         
         except:
             raise BadRequest('Run CTB failed, please try again later.')
@@ -1098,27 +1122,24 @@ class RunCTB(Resource):
 # class CreateTempBOM(Resource):
 
 
-def BOMEngine(product_uid):
+def CreateBOMView(product_uid):
     try:
         conn = connect()
-        print("Inside try block")
-        # data = request.get_json(force=True)
-        # print("Received:", data)
-        # product_uid = data["product_uid"]
+        print("Inside Create BOM View")
         print("pruduct_uid:", product_uid)
 
-
-        query = """
-                    DROP VIEW IF EXISTS pmctb.BOMTEST;
+        # Drop BOMView
+        query1 = """
+                    DROP VIEW IF EXISTS pmctb.BOMView;
                 """
 
-        products = execute(query, 'post', conn)
-        print(products)
-        print("Done with one")
+        drop = execute(query1, 'post', conn)
+        print(drop)
+        print("BOMView dropped")
 
-        # Get Product Specific Data
+        # Create BOMView
         query = """
-                    CREATE VIEW pmctb.BOMTEST AS (
+                    CREATE VIEW pmctb.BOMView AS (
                     SELECT 
                         CONCAT(product_uid, "-", BOM_id) AS BOM_uid,
                         BOM_Level,
@@ -1144,13 +1165,12 @@ def BOMEngine(product_uid):
                     
                         ) AS BOM)
                     """
-        print(query)
-        # WHERE product_uid = "310-000061"
-        products = execute(query, 'get', conn)
-        print("success")
-        print(products)
+        # print(query)
+        create = execute(query, 'get', conn)
+        print("BOMView Created")
+        print(create)
 
-        return products['result']
+        return
     
     except:
         raise BadRequest('BOM Engine failed, please try again later.')
