@@ -1048,7 +1048,7 @@ class GetBOM(Resource):
             query = """
                     SELECT * 
                     FROM pmctb.products 
-                    WHERE product_uid = '""" + product_uid + """';
+                    WHERE product_uid = \'""" + product_uid + """\';
                     """
 
             products = execute(query, 'get', conn)
@@ -1079,15 +1079,14 @@ class RunCTB(Resource):
             # Get Product Specific Data
             print("in 2nd query")
             query = """
-                    SELECT * 
-                    FROM pmctb.BOMTest;
+                    SELECT * FROM pmctb.BOMTEST;
                     """
             print(query)
-            products = execute(query, 'post', conn)
+            products = execute(query, 'get', conn)
 
             # return products['result']
             print(BOM)
-            return(products)
+            return products['result']
         
         except:
             raise BadRequest('Run CTB failed, please try again later.')
@@ -1110,7 +1109,7 @@ def BOMEngine(product_uid):
 
 
         query = """
-                    DROP VIEW pmctb.BOMTEST;
+                    DROP VIEW IF EXISTS pmctb.BOMTEST;
                 """
 
         products = execute(query, 'post', conn)
@@ -1141,11 +1140,12 @@ def BOMEngine(product_uid):
                                     BOM_Level INT PATH '$.Level',
                                     BOM_Parent VARCHAR(255) PATH '$.Parent')
                                     ) AS BOM
-                    WHERE product_uid = "310-000061"
+                    WHERE product_uid = \'""" + product_uid + """\'
                     
                         ) AS BOM)
                     """
-
+        print(query)
+        # WHERE product_uid = "310-000061"
         products = execute(query, 'get', conn)
         print("success")
         print(products)
