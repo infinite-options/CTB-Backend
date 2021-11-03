@@ -657,7 +657,7 @@ class ImportFile(Resource):
 
             filepath = request.files['filepath']
             stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
-            # print(filepath.filename)
+            print(filepath.filename)
 
             csv_input = csv.reader(stream)
             for row in csv_input:
@@ -665,7 +665,7 @@ class ImportFile(Resource):
                 # print(row)
 
             product = TraverseTable(data, filepath.filename)
-
+            print('Back in Class')
             return(product)
 
         except:
@@ -962,7 +962,8 @@ def TraverseTable(file, filename):
                 product_desc = \'''' + product_desc + '''\',
                 product_BOM = \'''' + jsonBOM + '''\',
                 product_parents = \'''' + jsonparents + '''\',
-                product_children = \'''' + jsonchildren + '''\'
+                product_children = \'''' + jsonchildren + '''\',
+                product_status = 'ACTIVE'
             '''
 
         items = execute(productquery, "post", conn)
@@ -991,7 +992,8 @@ class AllProducts(Resource):
             # Get All Product Data
             query = """
                     SELECT * 
-                    FROM pmctb.products;
+                    FROM pmctb.products
+                    WHERE product_status != 'DELETED';
                     """
 
             products = execute(query, 'get', conn)
@@ -1243,6 +1245,35 @@ def CreateBOMView(product_uid):
         disconnect(conn)
 
 
+class Delete(Resource):
+    def post(self):
+        print("\nInside Delete")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            query = """
+                    UPDATE pmctb.products
+                    SET product_status = 'DELETED'
+                    WHERE product_uid = \'""" + product_uid + """\'
+                    """
+
+            products = execute(query, 'post', conn)
+            print("Back in class")
+            print(products)
+            return products['code']
+        
+        except:
+            raise BadRequest('Delete Request failed, please try again later.')
+        finally:
+            disconnect(conn)
 
 
 class UploadFile(Resource):
@@ -1298,6 +1329,7 @@ api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 api.add_resource(GetBOM, "/api/v2/GetBOM")
 api.add_resource(RunCTB, "/api/v2/RunCTB")
 api.add_resource(RunOrderList, "/api/v2/RunOrderList")
+api.add_resource(Delete, "/api/v2/Delete")
 
 api.add_resource(UploadFile, "/api/v2/UploadFile")
 
