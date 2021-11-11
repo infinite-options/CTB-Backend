@@ -613,34 +613,34 @@ class ImportJSONBOM(Resource):
 
 
 # IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
-class ImportFileBOM(Resource):
-    def post(self):
-        print("\nIn Import File")
-        response = {}
-        items = {}
-        try:
-            conn = connect()
+# class ImportFileBOM(Resource):
+#     def post(self):
+#         print("\nIn Import File")
+#         response = {}
+#         items = {}
+#         try:
+#             conn = connect()
                     
-            # Initialize uber List
-            data = []
+#             # Initialize uber List
+#             data = []
 
-            filepath = request.files['filepath']
-            stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
-            # print(filepath.filename)
+#             filepath = request.files['filepath']
+#             stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
+#             # print(filepath.filename)
 
-            csv_input = csv.reader(stream)
-            for row in csv_input:
-                data.append(row)
-                # print(row)
+#             csv_input = csv.reader(stream)
+#             for row in csv_input:
+#                 data.append(row)
+#                 # print(row)
 
-            product = TraverseTable(data, filepath.filename)
+#             product = TraverseTable(data, filepath.filename)
 
-            return(product)
+#             return(product)
 
-        except:
-            print("Something went wrong")
-        finally:
-            disconnect(conn)
+#         except:
+#             print("Something went wrong")
+#         finally:
+#             disconnect(conn)
 
 
 
@@ -720,6 +720,8 @@ def TraverseTable(file, filename):
         jsondata = []
         parents = []
         children = []
+        tree = {}
+        last_level_row = {}
         
         # ONLY FOR DEBUG: Print each Row within the uber List
         print('\n Data Table')
@@ -910,23 +912,34 @@ def TraverseTable(file, filename):
             print("New rgt: ", rgt, type(rgt))
 
             items[rgtIndex] = rgt
-            print(rgt, lft, PNIndex, items[PNIndex])
-            print(int(file[currentRow][levelIndex]))
-            print(file[currentRow][PNIndex])
-            print(file[currentRow][QtyIndex])
-            print(lft, rgt, 'Parent')
+            print("\nCurrent Data: ", lft, rgt, PNIndex, items[PNIndex], items[QtyIndex])
+            print("\nCurrent Row: ", int(file[currentRow][levelIndex]))
+            print("\nCurrent Row: ", int(items[levelIndex]))
+
             if (rgt == lft + 1 and PNIndex != -1):
                 print("in Child")
                 items[parentIndex] = 'Child'
-                jsondata.extend([{'Level':int(file[currentRow][levelIndex]), 'PN':file[currentRow][PNIndex], 'Qty':file[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
+                tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = currentRow - 1 
+                jsondata.extend([{'Level':int(items[levelIndex]), 'PN':items[PNIndex], 'Qty':items[QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
                 if (items[PNIndex] not in children):
                     children.append(items[PNIndex])
                 
             elif (rgt != lft + 1 and PNIndex != -1):
                 print("in Parent")
-                jsondata.extend([{'Level':int(file[currentRow][levelIndex]), 'PN':file[currentRow][PNIndex], 'Qty':file[currentRow][QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
+                
+                tree[items[PNIndex]] = {}
+
+                last_level_row[items[levelIndex]] = items[PNIndex]
+
+                if currentRow != 1:
+                    
+                    tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = currentRow - 1
+
+                jsondata.extend([{'Level':int(items[levelIndex]), 'PN':items[PNIndex], 'Qty':items[QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
                 if (items[PNIndex] not in parents):
                     parents.append(items[PNIndex])
+
+            
                 
             # print(data.index(items), items)
 
@@ -945,6 +958,9 @@ def TraverseTable(file, filename):
         print("parents: ", parents)
         jsonchildren = json.dumps(children)
         print("children: ", children)
+        print("last Level: ", last_level_row)
+        jsontree = json.dumps(tree)
+        print("tree: ", tree)
             
 
         # Call stored procedure to get new product UID
@@ -963,6 +979,7 @@ def TraverseTable(file, filename):
                 product_BOM = \'''' + jsonBOM + '''\',
                 product_parents = \'''' + jsonparents + '''\',
                 product_children = \'''' + jsonchildren + '''\',
+                product_tree = \'''' + jsontree + '''\',
                 product_status = 'ACTIVE'
             '''
 
@@ -976,6 +993,43 @@ def TraverseTable(file, filename):
     finally:
         disconnect(conn)
         
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
