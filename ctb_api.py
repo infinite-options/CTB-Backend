@@ -996,7 +996,56 @@ def TraverseTable(file, filename):
 
 
 
+class Demand(Resource):
+    def get(self):
+        print("\nInside Demand")
+        response = {}
+        items = {}
 
+        try:
+            conn = connect()
+            print("Inside try block")
+
+            # Get All Product Data
+            query = """
+                    SELECT * 
+                    FROM pmctb.demand;
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
+        
+        except:
+            raise BadRequest('Demand Request failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+class Inventory(Resource):
+    def get(self):
+        print("\nInside Inventory")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+
+            # Get All Product Data
+            query = """
+                    SELECT * 
+                    FROM pmctb.inventory;
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
+        
+        except:
+            raise BadRequest('Inventory Request failed, please try again later.')
+        finally:
+            disconnect(conn)
 
 
 
@@ -1384,6 +1433,9 @@ api.add_resource(GetBOM, "/api/v2/GetBOM")
 api.add_resource(RunCTB, "/api/v2/RunCTB")
 api.add_resource(RunOrderList, "/api/v2/RunOrderList")
 api.add_resource(Delete, "/api/v2/Delete")
+
+api.add_resource(Demand, "/api/v2/Demand")
+api.add_resource(Inventory, "/api/v2/Inventory")
 
 api.add_resource(UploadFile, "/api/v2/UploadFile")
 
