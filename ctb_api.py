@@ -912,14 +912,42 @@ def TraverseTable(file, filename):
             print("New rgt: ", rgt, type(rgt))
 
             items[rgtIndex] = rgt
-            print("\nCurrent Data: ", lft, rgt, PNIndex, items[PNIndex], items[QtyIndex])
-            print("\nCurrent Row: ", int(file[currentRow][levelIndex]))
-            print("\nCurrent Row: ", int(items[levelIndex]))
+            print("\nCurrent Item: ", items)
+            print("Current Data: ", lft, rgt, PNIndex, items[PNIndex], items[QtyIndex])
+            print("Current Row Level: ", int(file[currentRow][levelIndex]))
+            print("Level Index: ", levelIndex)
+            print("Current Row: ", int(items[levelIndex]))
+
+
+
+            if currentRow == 1:
+                # tree_key = f'{items[PNIndex]}'
+                tree_key = f'{items[PNIndex]}-{lft}'
+                tree[items[PNIndex]] = {}
+                tree[items[PNIndex]][tree_key] = {}
+                last_level_row[items[levelIndex]] = [items[PNIndex], tree_key]
+                print("\nKey: ", tree_key)
+                print("Last Level Row: ", last_level_row)
+                parent = last_level_row[str(int(items[levelIndex]))][0]
+                parent_left = last_level_row[str(int(items[levelIndex]))][1]
+                print("Parent: ", parent, parent_left)
+            else:
+                tree_key = f'{items[PNIndex]}-{lft}'
+                print("\nKey: ", tree_key)
+            
+                print("Last Level Row: ", last_level_row)
+                parent = last_level_row[str(int(items[levelIndex]) - 1)][0]
+                parent_left = last_level_row[str(int(items[levelIndex]) - 1)][1]
+                print("Parent: ", parent, parent_left)
+
 
             if (rgt == lft + 1 and PNIndex != -1):
                 print("in Child")
                 items[parentIndex] = 'Child'
-                tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = currentRow - 1 
+                # tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = currentRow - 1  
+                # tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = {'idx':currentRow -1, 'lft':lft, 'rgt':rgt, 'qty':items[QtyIndex], 'parent': last_level_row[str(int(items[levelIndex]) - 1)] }
+                tree[parent][parent_left][items[PNIndex]]                             = {'idx':currentRow -1, 'lft':lft, 'rgt':rgt, 'qty':items[QtyIndex], 'parent': last_level_row[str(int(items[levelIndex]) - 1)][0], 'parent-lft': last_level_row[str(int(items[levelIndex]) - 1)][1] }
+                
                 jsondata.extend([{'Level':int(items[levelIndex]), 'PN':items[PNIndex], 'Qty':items[QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Child'}])
                 if (items[PNIndex] not in children):
                     children.append(items[PNIndex])
@@ -927,19 +955,42 @@ def TraverseTable(file, filename):
             elif (rgt != lft + 1 and PNIndex != -1):
                 print("in Parent")
                 
-                tree[items[PNIndex]] = {}
+                
+                # tree[items[PNIndex]] = {}
+                # tree[tree_key] = {}
 
-                last_level_row[items[levelIndex]] = items[PNIndex]
+                # PARTIALLY WORKING
+                # print(f'{items[PNIndex]}{lft}')
+                # tree[f'{items[PNIndex]}{lft}'] = {}
+
+                # tree[f'{items[PNIndex]}{lft}'] = {}
+                # A = f'{last_level_row[str(int(items[levelIndex]) - 1)]}{lft}'
+                # print(A)
+
+                # last_level_row[items[levelIndex]] = items[PNIndex]
+                # last_level_row[items[levelIndex]] = tree_key
 
                 if currentRow != 1:
+                    print("Inside Current Row: ", currentRow)
+                    print(last_level_row[str(int(items[levelIndex]) - 1)])
+
+                    if items[PNIndex] not in tree:
+                        tree[items[PNIndex]] = {}
+                    tree[items[PNIndex]][tree_key] = {}
+                    last_level_row[items[levelIndex]] = [items[PNIndex], tree_key]
+
                     
-                    tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = currentRow - 1
+
+                    # tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = currentRow - 1  
+                    # tree[last_level_row[str(int(items[levelIndex]) - 1)]][items[PNIndex]] = {'idx':currentRow -1, 'lft':lft, 'rgt':rgt, 'qty':items[QtyIndex], 'parent': last_level_row[str(int(items[levelIndex]) - 1)] }
+                    
+                    tree[parent][parent_left][items[PNIndex]]                             = {'idx':currentRow -1, 'lft':lft, 'rgt':rgt, 'qty':items[QtyIndex], 'parent': last_level_row[str(int(items[levelIndex]) - 1)][0], 'parent-lft': last_level_row[str(int(items[levelIndex]) - 1)][1] }
 
                 jsondata.extend([{'Level':int(items[levelIndex]), 'PN':items[PNIndex], 'Qty':items[QtyIndex], 'lft':lft, 'rgt':rgt, 'Parent':'Parent'}])
                 if (items[PNIndex] not in parents):
                     parents.append(items[PNIndex])
 
-            
+            print("Finished one part")
                 
             # print(data.index(items), items)
 
