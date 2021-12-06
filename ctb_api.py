@@ -1161,6 +1161,9 @@ class AllProducts(Resource):
 
 
 class Products(Resource):
+    def __call__(self):
+        print("In RTS")
+
     def get(self,product_uid):
         print("\nInside CTB_test")
         response = {}
@@ -1168,7 +1171,7 @@ class Products(Resource):
 
         try:
             conn = connect()
-            print("Inside try block")
+            print("Inside try block", product_uid)
 
             # Get Product Specific Data
             query = """
@@ -1177,7 +1180,9 @@ class Products(Resource):
                     WHERE product_uid = '""" + product_uid + """';
                     """
 
+
             products = execute(query, 'get', conn)
+            # print(products)
 
             return products['result']
         
@@ -1185,6 +1190,175 @@ class Products(Resource):
             raise BadRequest('Products Request failed, please try again later.')
         finally:
             disconnect(conn)
+
+class RunCTBVishal(Resource):
+    def post(self):
+        print("\nInside Run Order List Vishal")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            product = Products.get(self, product_uid)[0]
+            # print(product, type(product))
+
+
+            tree = json.loads(product['product_tree'])
+            parents = json.loads(product['product_parents'])
+            # print(parents)
+
+            ctb_list = []
+
+            for parent in parents:
+                if parent in tree:
+                    if len(tree[parent]) == 1:
+                        # Get the single key from dictionary
+                        parent_lft = next(iter(tree[parent]))
+                        need = need_calc_helper_extended(tree, parent)
+                        # update_ctb_list(ctb_list, parent, parent_lft, need)
+                        for child_pn in need:
+                            for pn_left, qty in need[child_pn].items():
+                                entry = {
+                                    'GrandParent_BOM_pn': parent,
+                                    'gp_lft': parent_lft,
+                                    'Child_pn': child_pn,
+                                    'BOM_lft': pn_left,
+                                    'RequiredQty': qty
+                                }
+                                ctb_list.append(entry)
+                    elif parent in tree and len(tree[parent]) > 1:
+                        for parent_lft in tree[parent]:
+                            need = need_calc_helper_extended(tree, parent, specific=True, pn_left=parent_lft)
+                            # update_ctb_list(ctb_list, parent, parent_lft, need)
+                            for child_pn in need:
+                                for pn_left, qty in need[child_pn].items():
+                                    entry = {
+                                        'GrandParent_BOM_pn': parent,
+                                        'gp_lft': parent_lft,
+                                        'Child_pn': child_pn,
+                                        'BOM_lft': pn_left,
+                                        'RequiredQty': qty
+                                    }
+                                    ctb_list.append(entry)
+                else:
+                    return []
+
+            return ctb_list
+
+        except:
+            raise BadRequest('Run CTB Vishal failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+class RunOrderListVishal(Resource):
+    def post(self):
+        print("\nInside Run Order List Vishal")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            product = Products.get(self, product_uid)[0]
+            # print(product, type(product))
+
+
+            tree = json.loads(product['product_tree'])
+            parents = json.loads(product['product_parents'])
+            # print(parents)
+
+            order_list = []
+
+            for parent in parents:
+                if parent in tree:
+                    # Get single key from dictionary
+                    parent_lft = next(iter(tree[parent]))
+                    if len(tree[parent]) == 1:
+                        need = need_calc_helper_extended(tree, parent)
+
+                        for child in need:
+                            qty = sum(need[child].values())
+                            entry = {
+                                'GrandParent_BOM_pn': parent,
+                                'gp_lft': parent_lft,
+                                'Child_pn': child,
+                                'RequiredQty': qty
+                            }
+                            order_list.append(entry)
+                        # update_ctb_list(ctb_list, parent, parent_lft, need)
+                    elif parent in tree and len(tree[parent]) > 1:
+                        need = need_calc_helper_extended(tree, parent)
+                        count = len(tree[parent])
+                        for child in need:
+                            qty = sum(need[child].values())
+                            entry = {
+                                'GrandParent_BOM_pn': parent,
+                                'gp_lft': parent_lft,
+                                'Child_pn': child,
+                                'RequiredQty': qty * count
+                            }
+                            # print('in here for', parent)
+                            # print(entry)
+                            order_list.append(entry)
+                else:
+                    return []
+
+            return order_list
+
+        except:
+            raise BadRequest('Run Order List Vishal failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+def need_calc_helper_extended(tree, pn, specific=False, pn_left=''):
+    if not specific:
+        pn_left = next(iter(tree[pn]))
+    if pn in tree and tree[pn] and pn_left in tree[pn]:
+        result = {}
+        for child in tree[pn][pn_left]:
+            record = tree[pn][pn_left][child]
+            qty = record['qty']
+
+            # Additional checks for qty
+            if not isinstance(qty, (int, float)) and qty.isdigit():
+                qty = int(qty)
+
+            child_pn_left = f'{child}-{record["lft"]}'
+
+            if child in tree and child_pn_left in tree[child]:
+                req = need_calc_helper_extended(tree, child, specific=True, pn_left=child_pn_left)
+                for req_pn in req:
+                    if req_pn not in result:
+                        result[req_pn] = {}
+                    for req_pn_left in req[req_pn]:
+                        qty_child = req[req_pn][req_pn_left]
+                        if req_pn_left in result[req_pn]:
+                            current = result[req_pn][req_pn_left]
+                            result[req_pn][req_pn_left] = current + qty_child * qty
+                        else:
+                            result[req_pn][req_pn_left] = qty_child * qty
+            else:
+                if child not in result:
+                    result[child] = {}
+                if child_pn_left in result[child]:
+                    current = result[child][child_pn_left]
+                    result[child][child_pn_left] = current + qty
+                else:
+                    result[child][child_pn_left] = qty
+
+        return result        
 
 
 class GetBOM(Resource):
@@ -1483,6 +1657,10 @@ api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 api.add_resource(GetBOM, "/api/v2/GetBOM")
 api.add_resource(RunCTB, "/api/v2/RunCTB")
 api.add_resource(RunOrderList, "/api/v2/RunOrderList")
+
+api.add_resource(RunCTBVishal, "/api/v2/RunCTBVishal")
+api.add_resource(RunOrderListVishal, "/api/v2/RunOrderListVishal")
+
 api.add_resource(Delete, "/api/v2/Delete")
 
 api.add_resource(Demand, "/api/v2/Demand")
