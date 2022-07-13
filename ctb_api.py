@@ -1083,7 +1083,7 @@ class Inventory(Resource):
             conn = connect()
             print("Inside try block")
 
-            # Get All Product Data
+            # Get All Inventory Data
             query = """
                     SELECT * 
                     FROM pmctb.inventory;
@@ -1099,10 +1099,99 @@ class Inventory(Resource):
             disconnect(conn)
 
 
+class GetParts(Resource):
+    def get(self):
+        print("\nInside GetParts")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+
+            # Get All Parts Data
+            query = """
+                    SELECT * 
+                    FROM pmctb.parts;
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
+        
+        except:
+            raise BadRequest('Parts Request failed, please try again later.')
+        finally:
+            disconnect(conn)
 
 
+class AddParts(Resource):
+    def post(self):
+        print("\nInside Add Parts")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
 
 
+            new_product_uid = get_new_productUID(conn)
+            print(new_product_uid)
+            print(getNow())
+
+            part_number = data["PN"]
+            part_desc = data["Description"]
+            part_cost = float(data["Unit_Cost"])
+            # print(part_cost)
+            # print(type(part_cost))
+            # print("1")
+            part_cost_unit = data["Cost_Unit"]
+            part_weight = data["Weight"]
+            # print(part_weight)
+            # print(type(part_weight))
+            part_weight_unit = data["Weight_Unit"]
+            # print("2")
+            part_material = data["Material"]
+            part_vendor = data["Vendor"]
+            part_origin = data["Country_of_Origin"]
+            # print("3")
+            part_leadtime = int(data["Lead_Time"])
+            # print(part_leadtime)
+            # print(part_cost)
+            # print(type(part_leadtime))
+            part_leadtime_units = data["Lead_Time_Units"]
+            # print(part_leadtime_units)
+            # print("4")
+
+            # Run query to enter new product UID and BOM into table
+            partquery =  '''
+                INSERT INTO pmctb.parts
+                SET PN = \'''' + part_number + '''\',
+                    Description = \'''' + part_desc + '''\',
+                    Unit_Cost = \'''' + str(part_cost) + '''\',
+                    Cost_Unit = \'''' + part_cost_unit + '''\',
+                    Weight = \'''' + str(part_weight) + '''\',
+                    Weight_Unit = \'''' + part_weight_unit + '''\',
+                    Material = \'''' + part_material + '''\',
+                    Vendor = \'''' + part_vendor + '''\',
+                    Country_of_Origin = \'''' + part_origin + '''\',
+                    Lead_Time = \'''' + int(part_leadtime) + '''\',
+                    Lead_Time_Units = \'''' + part_leadtime_units + '''\';
+                '''
+
+            # print(partquery)
+            # print ("5")
+            items = execute(partquery, "post", conn)
+            print("items: ", items)
+            return items
+        
+        except:
+            raise BadRequest('Add Part failed, please try again later.')
+        finally:
+            disconnect(conn)
 
 
 
@@ -1468,42 +1557,10 @@ class RunOrderList(Resource):
             # Get Product Specific Data
             print("\nBack in Run Order List - 2nd query")
             query = """
-                    SELECT 
-                        BOM_level, 
-                        GrandParent_BOM_pn, 
-                        gp_lft, 
-                        Child_pn,
-                        Sum(RequiredQty) AS RequiredQty
-                    FROM (
-                        SELECT
-                            grandparent_lvl.BOM_level    
-                            , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
-                            , grandparent_lvl.BOM_lft as gp_lft    
-                            , child_lvl.BOM_pn as Child_pn 
-                            , child_lvl.BOM_lft    
-                            , child_lvl.BOM_qty as Qty_per
-                            , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty                 -- Magic Formula from Joe Celko
-                        FROM    
-                            pmctb.BOMView grandparent_lvl  -- Need names to distinguish tables from one another
-                            , pmctb.BOMView parent_lvl 
-                            , pmctb.BOMView child_lvl    
-                        WHERE    
-                            ((parent_lvl.BOM_lft) Between (grandparent_lvl.BOM_lft+1) And (grandparent_lvl.BOM_rgt))    -- Find all parts within the grandparent levels    
-                            AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                                 -- Find only the children    
-                            AND ((child_lvl.BOM_lft) Between (parent_lvl.BOM_lft) And (parent_lvl.BOM_rgt) )            -- Find just the children that report to the parents    
-                        GROUP BY    
-                            grandparent_lvl.BOM_level   
-                            , grandparent_lvl.BOM_pn 
-                            , grandparent_lvl.BOM_lft    
-                            , child_lvl.BOM_pn    
-                            , child_lvl.BOM_lft    
-                            , child_lvl.BOM_qty    
-                        ORDER BY    
-                            grandparent_lvl.BOM_level
-                            , grandparent_lvl.BOM_pn    
-                            , child_lvl.BOM_lft 
-                        ) AS tempCTB		
-                    GROUP BY Child_pn, GrandParent_BOM_pn;
+                    SELECT
+                        *
+                    FROM    
+                        pmctb.BOMView grandparent_lvl ;
                     """
             # print(query)
             ctb = execute(query, 'get', conn)
@@ -1667,6 +1724,9 @@ api.add_resource(Demand, "/api/v2/Demand")
 api.add_resource(Inventory, "/api/v2/Inventory")
 
 api.add_resource(UploadFile, "/api/v2/UploadFile")
+
+api.add_resource(AddParts, "/api/v2/AddParts")
+api.add_resource(GetParts, "/api/v2/GetParts")
 
 
 if __name__ == '__main__':
