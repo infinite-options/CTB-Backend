@@ -1178,7 +1178,7 @@ class AddParts(Resource):
                     Material = \'''' + part_material + '''\',
                     Vendor = \'''' + part_vendor + '''\',
                     Country_of_Origin = \'''' + part_origin + '''\',
-                    Lead_Time = \'''' + int(part_leadtime) + '''\',
+                    Lead_Time = \'''' + str(part_leadtime) + '''\',
                     Lead_Time_Units = \'''' + part_leadtime_units + '''\';
                 '''
 
