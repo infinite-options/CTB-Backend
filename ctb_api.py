@@ -321,6 +321,12 @@ def get_new_productUID(conn):
         return newProductQuery['result'][0]['new_id']
     return "Could not generate new product UID", 500
 
+def get_new_inventoryUID(conn):
+    newProductQuery = execute("call pmctb.new_inventory_uid();", 'get', conn)
+    if newProductQuery['code'] == 280:
+        return newProductQuery['result'][0]['new_id']
+    return "Could not generate new product UID", 500
+
 
 #  -----------------------------------------  PROGRAM ENDPOINTS START HERE  -----------------------------------------
 
@@ -1098,6 +1104,61 @@ class Inventory(Resource):
         finally:
             disconnect(conn)
 
+    def post(self):
+        print("\nInside Add Inventory")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
+
+            new_inv_uid = get_new_inventoryUID(conn)
+            print(new_inv_uid)
+            today = getNow()
+            print(today)
+
+            part_number = data["PN"]
+            part_origin = data["Country_of_Origin"]
+            # print("3")
+            part_inventory = float(data["Current_Inventory"])
+            part_inventory_units = data["Current_Inventory_Unit"]
+
+
+            # Run query to enter new product UID and BOM into Inventory table
+            addInventory =  '''
+                INSERT INTO pmctb.inventory
+                SET inv_uid =  \'''' + new_inv_uid + '''\',
+                    inv_date = \'''' + today + '''\',
+                    inv_pn = \'''' + part_number + '''\',
+                    inv_qty = \'''' + str(part_inventory) + '''\',
+                    inv_loc = \'''' + part_origin + '''\',
+                    inv_qty_unit = \'''' + part_inventory_units + '''\',
+                    inv_PO_num = 'NEW';
+                '''
+
+            print(addInventory)
+            print ("6")
+            items = execute(addInventory, "post", conn)
+            print("items: ", items)
+            print("Add Inventory Successful")
+
+
+            return items
+        
+        except:
+            raise BadRequest('Add Part failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+    
+
+
+
+
 
 class GetParts(Resource):
     def get(self):
@@ -1140,7 +1201,10 @@ class AddParts(Resource):
 
             new_product_uid = get_new_productUID(conn)
             print(new_product_uid)
-            print(getNow())
+            new_inv_uid = get_new_inventoryUID(conn)
+            print(new_inv_uid)
+            today = getNow()
+            print(today)
 
             part_number = data["PN"]
             part_desc = data["Description"]
@@ -1165,8 +1229,10 @@ class AddParts(Resource):
             part_leadtime_units = data["Lead_Time_Units"]
             # print(part_leadtime_units)
             # print("4")
+            part_inventory = float(data["Current_Inventory"])
+            part_inventory_units = data["Current_Inventory_Unit"]
 
-            # Run query to enter new product UID and BOM into table
+            # Run query to enter new product UID and BOM into Parts table
             partquery =  '''
                 INSERT INTO pmctb.parts
                 SET PN = \'''' + part_number + '''\',
@@ -1186,6 +1252,27 @@ class AddParts(Resource):
             # print ("5")
             items = execute(partquery, "post", conn)
             print("items: ", items)
+            print("Add Part Successful")
+
+            # Run query to enter new product UID and BOM into Inventory table
+            addInventory =  '''
+                INSERT INTO pmctb.inventory
+                SET inv_uid =  \'''' + new_inv_uid + '''\',
+                    inv_date = \'''' + today + '''\',
+                    inv_pn = \'''' + part_number + '''\',
+                    inv_qty = \'''' + str(part_inventory) + '''\',
+                    inv_loc = \'''' + part_origin + '''\',
+                    inv_qty_unit = \'''' + part_inventory_units + '''\',
+                    inv_PO_num = 'NEW';
+                '''
+
+            print(addInventory)
+            print ("6")
+            items = execute(addInventory, "post", conn)
+            print("items: ", items)
+            print("Add Inventory Successful")
+
+
             return items
         
         except:
