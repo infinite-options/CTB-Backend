@@ -1154,6 +1154,47 @@ class Inventory(Resource):
             disconnect(conn)
 
 
+    def put(self):
+        print("\nInside Update Inventory")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
+
+            today = getNow()
+            print(today)
+
+            inv_uid = data["inv_uid"]
+            # print("3")
+            part_inventory = float(data["inv_qty"])
+
+            # Run query to enter new product UID and BOM into Inventory table
+            updateInventory =  '''
+                UPDATE pmctb.inventory
+                SET inv_date = \'''' + today + '''\',
+                    inv_qty = \'''' + str(part_inventory) + '''\'
+                WHERE  inv_uid = \'''' + inv_uid + '''\';
+                '''
+
+            print(updateInventory)
+            print ("7")
+            items = execute(updateInventory, "post", conn)
+            print("items: ", items)
+            print("Add Inventory Successful")
+
+
+            return items
+        
+        except:
+            raise BadRequest('Add Part failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
     
 
 
