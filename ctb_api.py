@@ -1125,6 +1125,8 @@ class Inventory(Resource):
             # print("3")
             part_inventory = float(data["Current_Inventory"])
             part_inventory_units = data["Current_Inventory_Unit"]
+            # part_inventory_status = data["Current_Inventory_Status"]
+            part_inventory_available_date = data["Inventory_Available_Date"]
 
 
             # Run query to enter new product UID and BOM into Inventory table
@@ -1136,6 +1138,7 @@ class Inventory(Resource):
                     inv_qty = \'''' + str(part_inventory) + '''\',
                     inv_loc = \'''' + part_origin + '''\',
                     inv_qty_unit = \'''' + part_inventory_units + '''\',
+                    inv_available_date = \'''' + part_inventory_available_date + '''\',
                     inv_PO_num = 'NEW';
                 '''
 
@@ -1171,12 +1174,17 @@ class Inventory(Resource):
             inv_uid = data["inv_uid"]
             # print("3")
             part_inventory = float(data["inv_qty"])
+            inv_location = data["inv_loc"]
+            part_inventory_available_date = data["inv_available_date"]
+
 
             # Run query to enter new product UID and BOM into Inventory table
             updateInventory =  '''
                 UPDATE pmctb.inventory
                 SET inv_date = \'''' + today + '''\',
-                    inv_qty = \'''' + str(part_inventory) + '''\'
+                    inv_qty = \'''' + str(part_inventory) + '''\',
+                    inv_loc = \'''' + inv_location + '''\',
+                    inv_available_date = \'''' + part_inventory_available_date + '''\'
                 WHERE  inv_uid = \'''' + inv_uid + '''\';
                 '''
 
@@ -1272,6 +1280,9 @@ class AddParts(Resource):
             # print("4")
             part_inventory = float(data["Current_Inventory"])
             part_inventory_units = data["Current_Inventory_Unit"]
+            # part_inventory_status = data["Current_Inventory_Status"]
+            # print(part_inventory_status)
+            part_inventory_available_date = data["Inventory_Available_Date"]
 
             # Run query to enter new product UID and BOM into Parts table
             partquery =  '''
@@ -1304,6 +1315,7 @@ class AddParts(Resource):
                     inv_qty = \'''' + str(part_inventory) + '''\',
                     inv_loc = \'''' + part_origin + '''\',
                     inv_qty_unit = \'''' + part_inventory_units + '''\',
+                    inv_available_date = \'''' + part_inventory_available_date + '''\',
                     inv_PO_num = 'NEW';
                 '''
 
