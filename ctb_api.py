@@ -1085,6 +1085,9 @@ class RunCTB(Resource):
             product_uid = data["product_uid"]
             print("product_uid:", product_uid)
 
+            parent_product = data["product"]
+            print("product:", parent_product, type(parent_product))
+
             desired_qty = int(data["qty"])
             print("qty:", desired_qty, type(desired_qty))
 
@@ -1102,6 +1105,7 @@ class RunCTB(Resource):
                         Sum(RequiredQty) AS QtyPerAssembly,
                         Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
                     FROM pmctb.CTBView
+                    WHERE GrandParent_BOM_pn = \'""" + parent_product + """\'
                     GROUP BY Child_pn, gp_lft;
                     """
             print(query)
@@ -1172,7 +1176,7 @@ class RunCTB_old(Resource):
             disconnect(conn)
 
 
-
+# ENDPOINT RETURNS WHAT IS IN BOMVIEW
 class RunOrderList(Resource):
     def post(self):
         print("\nInside Run Order List")
