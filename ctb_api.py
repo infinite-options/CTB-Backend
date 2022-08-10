@@ -328,11 +328,24 @@ def get_new_inventoryUID(conn):
     return "Could not generate new product UID", 500
 
 
+
+#  -----------------------------------------  OVERALL CTB APPROACH  -----------------------------------------
+
+# -- PROCESS
+# -- 1.  UPLOAD BOM INTO PRODUCTS TABLE                 
+# -- 2.  CREATE BOM TABLE CALLED BOMView                 (TempBOM and BOMView)
+# -- 2.  RUN CTB USING BOMView                           (TempCTB and ...)
+# -- 3.  CREATE ORDER LIST                               (TempBuyList and ...)
+# -- 4.  SUBTRACT INVENTORY
+# -- 5.  CREATE FINAL ORDER LIST
+
+
 #  -----------------------------------------  PROGRAM ENDPOINTS START HERE  -----------------------------------------
 
+# STEP 1:  IMPORT BOM AND ADD LFT AND RGT TREE DESIGNATORS
 
-
-# IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
+# IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH: LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
+# THIS MAY BE USED TO TEST FROM POSTMAN.  ACTUAL PROGRAM USES ImportFile ENDPOINT
 class ImportJSONBOM(Resource):
     def post(self):
         print("\nIn Import BOM")
@@ -619,36 +632,6 @@ class ImportJSONBOM(Resource):
 
 
 # IMPORT STRUCTURED BOM TABLE (ASSUMES STRUCTURED BOM WHERE FIRST ROW IS HEADER WITH LEVEL, PART NUMBER, QTY AND SECOND ROW HAS TOP LEVEL ASSEMBLY.  NO OTHER COMMENTS OR INFO)
-# class ImportFileBOM(Resource):
-#     def post(self):
-#         print("\nIn Import File")
-#         response = {}
-#         items = {}
-#         try:
-#             conn = connect()
-                    
-#             # Initialize uber List
-#             data = []
-
-#             filepath = request.files['filepath']
-#             stream = io.StringIO(filepath.stream.read().decode("UTF8"), newline=None)
-#             # print(filepath.filename)
-
-#             csv_input = csv.reader(stream)
-#             for row in csv_input:
-#                 data.append(row)
-#                 # print(row)
-
-#             product = TraverseTable(data, filepath.filename)
-
-#             return(product)
-
-#         except:
-#             print("Something went wrong")
-#         finally:
-#             disconnect(conn)
-
-
 
 class ImportFile(Resource):
     def post(self):
@@ -1049,7 +1032,302 @@ def TraverseTable(file, filename):
         print("Something went wrong")
     finally:
         disconnect(conn)
+
+
+#  GET INFORMATION FOR A SPECIFIC PRODUCT INCLUDING BOM, PARENTS, CHILDREN AND TREE STRUCTURE
+class GetBOM(Resource):
+    def post(self):
+        print("\nInside GetBOM")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
+            product_uid = data["product_uid"]
+
+            # Get Product Specific Data
+            query = """
+                    SELECT * 
+                    FROM pmctb.products 
+                    WHERE product_uid = \'""" + product_uid + """\';
+                    """
+
+            products = execute(query, 'get', conn)
+
+            return products['result']
         
+        except:
+            raise BadRequest('Products Request failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+        
+# END STEP 1
+
+
+
+# STEP 2:  RUN CTB  (OPEN QUESTION:  WHY RUN CTB ON ENTIRE BOM?)
+
+class RunCTB(Resource):
+    def post(self):
+        print("\nInside New Run CTB")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            CreateBOMView(product_uid)
+            print("\nBack in Run CTB - after Create BOMView")
+            # Get Product Specific Data
+            CreateCTBView
+            print("\nBack in Run CTB - after Create CTBView")
+            query = """
+                    SELECT 
+                        BOM_level, 
+                        GrandParent_BOM_pn, 
+                        gp_lft, 
+                        Child_pn,
+                        Sum(RequiredQty) AS RequiredQty
+                    FROM pmctb.CTBView
+                    GROUP BY Child_pn, gp_lft;
+                    """
+            # print(query)
+            ctb = execute(query, 'get', conn)
+
+            return ctb['result']
+        
+        except:
+            raise BadRequest('Run CTB failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+class RunCTB_old(Resource):
+    def post(self):
+        print("\nInside Run CTB")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            CreateBOMView(product_uid)
+            # Get Product Specific Data
+            print("\nBack in Run CTB - 2nd query")
+            query = """
+                    SELECT
+                        grandparent_lvl.BOM_level    
+                        , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
+                        , grandparent_lvl.BOM_lft as gp_lft    
+                        , child_lvl.BOM_pn as Child_pn 
+                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_qty as Qty_per
+                        , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty  
+                    FROM    
+                        pmctb.BOMView grandparent_lvl  -- Need names to distinguish tables from one another
+                        , pmctb.BOMView parent_lvl 
+                        , pmctb.BOMView child_lvl    
+                    WHERE    
+                        ((parent_lvl.BOM_lft) Between (grandparent_lvl.BOM_lft+1) And (grandparent_lvl.BOM_rgt))     
+                        AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                     
+                        AND ((child_lvl.BOM_lft) Between (parent_lvl.BOM_lft) And (parent_lvl.BOM_rgt) )     
+                    GROUP BY    
+                        grandparent_lvl.BOM_level   
+                        , grandparent_lvl.BOM_pn 
+                        , grandparent_lvl.BOM_lft    
+                        , child_lvl.BOM_pn    
+                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_qty    
+                    ORDER BY    
+                        grandparent_lvl.BOM_level
+                        , grandparent_lvl.BOM_pn    
+                        , child_lvl.BOM_lft 
+                    """
+            # print(query)
+            ctb = execute(query, 'get', conn)
+
+            return ctb['result']
+        
+        except:
+            raise BadRequest('Run CTB failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+
+class RunOrderList(Resource):
+    def post(self):
+        print("\nInside Run Order List")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            CreateBOMView(product_uid)
+
+            # Get Product Specific Data
+            print("\nBack in Run Order List - 2nd query")
+            query = """
+                    SELECT
+                        *
+                    FROM    
+                        pmctb.BOMView grandparent_lvl ;
+                    """
+            # print(query)
+            ctb = execute(query, 'get', conn)
+
+            return ctb['result']
+        
+        except:
+            raise BadRequest('Run Order List failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+# CREATES TEMPORARY BOM TABLE (BOMView) FOR USE IN CTB
+def CreateBOMView(product_uid):
+    try:
+        conn = connect()
+        print("\nInside Create BOM View")
+        print("pruduct_uid:", product_uid)
+
+        # Drop BOMView
+        query1 = """
+                    DROP VIEW IF EXISTS pmctb.BOMView;
+                """
+
+        drop = execute(query1, 'post', conn)
+        # print(drop)
+        if drop["code"] == 281:
+            print("BOMView dropped")
+        
+        # Create BOMView
+        query = """
+                    CREATE VIEW pmctb.BOMView AS (
+                    SELECT 
+                        CONCAT(product_uid, "-", BOM_id) AS BOM_uid,
+                        BOM_Level,
+                        BOM_pn,
+                        BOM_qty,
+                        BOM_lft,
+                        BOM_rgt,
+                        BOM_Parent
+                    FROM (
+                        SELECT *
+                        FROM pmctb.products AS p,
+                        JSON_TABLE (p.product_BOM, '$[*]'
+                            COLUMNS (
+                                    BOM_id FOR ORDINALITY,
+                                    BOM_pn VARCHAR(255) PATH '$.PN',
+                                    BOM_qty DOUBLE PATH '$.Qty',
+                                    BOM_lft INT PATH '$.lft',
+                                    BOM_rgt INT PATH '$.rgt',
+                                    BOM_Level INT PATH '$.Level',
+                                    BOM_Parent VARCHAR(255) PATH '$.Parent')
+                                    ) AS BOM
+                    WHERE product_uid = \'""" + product_uid + """\'
+                    
+                        ) AS BOM)
+                    """
+        # print(query)
+        create = execute(query, 'get', conn)
+        print("BOMView Created")
+        print(create["code"])
+
+        return
+    
+    except:
+        raise BadRequest('BOM Engine failed, please try again later.')
+    finally:
+        disconnect(conn)
+
+
+
+
+# CREATES TEMPORARY CTB TABLE (CTBView) FOR USE IN CTB
+def CreateCTBView(self):
+    try:
+        conn = connect()
+        print("\nInside Create CTB View")
+
+        # Drop BOMView
+        query1 = """
+                    DROP VIEW IF EXISTS pmctb.CTBView;
+                """
+
+        drop = execute(query1, 'post', conn)
+        # print(drop)
+        if drop["code"] == 281:
+            print("CTBView dropped")
+        
+        # Create CTBView
+        query = """
+                    CREATE VIEW pmctb.CTBView AS (
+                    SELECT
+                        grandparent_lvl.BOM_level    
+                        , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
+                        , grandparent_lvl.BOM_lft as gp_lft    
+                        , child_lvl.BOM_pn as Child_pn 
+                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_qty as Qty_per
+                        , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty                         -- Magic Formula from Joe Celko
+                    FROM    
+                        pmctb.BOMView grandparent_lvl                                                               -- Need names to distinguish tables from one another
+                        , pmctb.BOMView parent_lvl 
+                        , pmctb.BOMView child_lvl    
+                    WHERE    
+                        ((parent_lvl.BOM_lft) Between (grandparent_lvl.BOM_lft+1) And (grandparent_lvl.BOM_rgt))    -- Find all parts within the grandparent levels    
+                    AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                                     -- Find only the children    
+                        AND ((child_lvl.BOM_lft) Between (parent_lvl.BOM_lft) And (parent_lvl.BOM_rgt) )            -- Find just the children that report to the parents    
+                    GROUP BY    
+                        grandparent_lvl.BOM_level   
+                        , grandparent_lvl.BOM_pn 
+                        , grandparent_lvl.BOM_lft    
+                        , child_lvl.BOM_pn    
+                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_qty    
+                    ORDER BY    
+                        grandparent_lvl.BOM_level
+                        , grandparent_lvl.BOM_pn    
+                        , child_lvl.BOM_lft 
+                    """
+        # print(query)
+        create = execute(query, 'get', conn)
+        print("BOMView Created")
+        print(create["code"])
+
+        return
+    
+    except:
+        raise BadRequest('BOM Engine failed, please try again later.')
+    finally:
+        disconnect(conn)
+
+
+
+
+
+
+
 
 
 
@@ -1081,7 +1359,7 @@ class Demand(Resource):
 
 class Inventory(Resource):
     def get(self):
-        print("\nInside Inventory")
+        print("\nInside GET Inventory")
         response = {}
         items = {}
 
@@ -1105,7 +1383,7 @@ class Inventory(Resource):
             disconnect(conn)
 
     def post(self):
-        print("\nInside Add Inventory")
+        print("\nInside ADD Inventory")
         response = {}
         items = {}
 
@@ -1158,7 +1436,7 @@ class Inventory(Resource):
 
 
     def put(self):
-        print("\nInside Update Inventory")
+        print("\nInside UPDATE Inventory")
         response = {}
         items = {}
 
@@ -1364,7 +1642,7 @@ class AddParts(Resource):
 
 class AllProducts(Resource):
     def get(self):
-        print("\nInside CTB_test")
+        print("\nInside AllProducts")
         response = {}
         items = {}
 
@@ -1394,7 +1672,7 @@ class Products(Resource):
         print("In RTS")
 
     def get(self,product_uid):
-        print("\nInside CTB_test")
+        print("\nInside Products")
         response = {}
         items = {}
 
@@ -1590,184 +1868,9 @@ def need_calc_helper_extended(tree, pn, specific=False, pn_left=''):
         return result        
 
 
-class GetBOM(Resource):
-    def post(self):
-        print("\nInside GetBOM")
-        response = {}
-        items = {}
-
-        try:
-            conn = connect()
-            print("Inside try block")
-            data = request.get_json(force=True)
-            print("Received:", data)
-            product_uid = data["product_uid"]
-
-            # Get Product Specific Data
-            query = """
-                    SELECT * 
-                    FROM pmctb.products 
-                    WHERE product_uid = \'""" + product_uid + """\';
-                    """
-
-            products = execute(query, 'get', conn)
-
-            return products['result']
-        
-        except:
-            raise BadRequest('Products Request failed, please try again later.')
-        finally:
-            disconnect(conn)
-
-
-class RunCTB(Resource):
-    def post(self):
-        print("\nInside Run CTB")
-        response = {}
-        items = {}
-
-        try:
-            conn = connect()
-            # print("Inside try block")
-            data = request.get_json(force=True)
-            # print("Received:", data)
-            product_uid = data["product_uid"]
-            print("product_uid:", product_uid)
-
-            CreateBOMView(product_uid)
-            # Get Product Specific Data
-            print("\nBack in Run CTB - 2nd query")
-            query = """
-                    SELECT
-                        grandparent_lvl.BOM_level    
-                        , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
-                        , grandparent_lvl.BOM_lft as gp_lft    
-                        , child_lvl.BOM_pn as Child_pn 
-                        , child_lvl.BOM_lft    
-                        , child_lvl.BOM_qty as Qty_per
-                        , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty  
-                    FROM    
-                        pmctb.BOMView grandparent_lvl  -- Need names to distinguish tables from one another
-                        , pmctb.BOMView parent_lvl 
-                        , pmctb.BOMView child_lvl    
-                    WHERE    
-                        ((parent_lvl.BOM_lft) Between (grandparent_lvl.BOM_lft+1) And (grandparent_lvl.BOM_rgt))     
-                        AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                     
-                        AND ((child_lvl.BOM_lft) Between (parent_lvl.BOM_lft) And (parent_lvl.BOM_rgt) )     
-                    GROUP BY    
-                        grandparent_lvl.BOM_level   
-                        , grandparent_lvl.BOM_pn 
-                        , grandparent_lvl.BOM_lft    
-                        , child_lvl.BOM_pn    
-                        , child_lvl.BOM_lft    
-                        , child_lvl.BOM_qty    
-                    ORDER BY    
-                        grandparent_lvl.BOM_level
-                        , grandparent_lvl.BOM_pn    
-                        , child_lvl.BOM_lft 
-                    """
-            # print(query)
-            ctb = execute(query, 'get', conn)
-
-            return ctb['result']
-        
-        except:
-            raise BadRequest('Run CTB failed, please try again later.')
-        finally:
-            disconnect(conn)
 
 
 
-class RunOrderList(Resource):
-    def post(self):
-        print("\nInside Run Order List")
-        response = {}
-        items = {}
-
-        try:
-            conn = connect()
-            # print("Inside try block")
-            data = request.get_json(force=True)
-            # print("Received:", data)
-            product_uid = data["product_uid"]
-            print("product_uid:", product_uid)
-
-            CreateBOMView(product_uid)
-
-            # Get Product Specific Data
-            print("\nBack in Run Order List - 2nd query")
-            query = """
-                    SELECT
-                        *
-                    FROM    
-                        pmctb.BOMView grandparent_lvl ;
-                    """
-            # print(query)
-            ctb = execute(query, 'get', conn)
-
-            return ctb['result']
-        
-        except:
-            raise BadRequest('Run Order List failed, please try again later.')
-        finally:
-            disconnect(conn)
-
-
-def CreateBOMView(product_uid):
-    try:
-        conn = connect()
-        print("\nInside Create BOM View")
-        print("pruduct_uid:", product_uid)
-
-        # Drop BOMView
-        query1 = """
-                    DROP VIEW IF EXISTS pmctb.BOMView;
-                """
-
-        drop = execute(query1, 'post', conn)
-        # print(drop)
-        if drop["code"] == 281:
-            print("BOMView dropped")
-        
-        # Create BOMView
-        query = """
-                    CREATE VIEW pmctb.BOMView AS (
-                    SELECT 
-                        CONCAT(product_uid, "-", BOM_id) AS BOM_uid,
-                        BOM_Level,
-                        BOM_pn,
-                        BOM_qty,
-                        BOM_lft,
-                        BOM_rgt,
-                        BOM_Parent
-                    FROM (
-                        SELECT *
-                        FROM pmctb.products AS p,
-                        JSON_TABLE (p.product_BOM, '$[*]'
-                            COLUMNS (
-                                    BOM_id FOR ORDINALITY,
-                                    BOM_pn VARCHAR(255) PATH '$.PN',
-                                    BOM_qty DOUBLE PATH '$.Qty',
-                                    BOM_lft INT PATH '$.lft',
-                                    BOM_rgt INT PATH '$.rgt',
-                                    BOM_Level INT PATH '$.Level',
-                                    BOM_Parent VARCHAR(255) PATH '$.Parent')
-                                    ) AS BOM
-                    WHERE product_uid = \'""" + product_uid + """\'
-                    
-                        ) AS BOM)
-                    """
-        # print(query)
-        create = execute(query, 'get', conn)
-        print("BOMView Created")
-        print(create["code"])
-
-        return
-    
-    except:
-        raise BadRequest('BOM Engine failed, please try again later.')
-    finally:
-        disconnect(conn)
 
 
 class Delete(Resource):
