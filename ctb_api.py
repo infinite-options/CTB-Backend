@@ -1085,22 +1085,26 @@ class RunCTB(Resource):
             product_uid = data["product_uid"]
             print("product_uid:", product_uid)
 
+            desired_qty = int(data["qty"])
+            print("qty:", desired_qty, type(desired_qty))
+
             CreateBOMView(product_uid)
-            print("\nBack in Run CTB - after Create BOMView")
+            print("\nBack in Run CTB - after Create BOM View")
             # Get Product Specific Data
             CreateCTBView
-            print("\nBack in Run CTB - after Create CTBView")
+            print("\nBack in Run CTB - after Create CTB View")
             query = """
                     SELECT 
                         BOM_level, 
                         GrandParent_BOM_pn, 
                         gp_lft, 
                         Child_pn,
-                        Sum(RequiredQty) AS RequiredQty
+                        Sum(RequiredQty) AS QtyPerAssembly,
+                        Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
                     FROM pmctb.CTBView
                     GROUP BY Child_pn, gp_lft;
                     """
-            # print(query)
+            print(query)
             ctb = execute(query, 'get', conn)
 
             return ctb['result']
