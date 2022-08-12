@@ -1091,6 +1091,11 @@ class RunCTB(Resource):
             desired_qty = int(data["qty"])
             print("qty:", desired_qty, type(desired_qty))
 
+
+
+            
+            
+
             CreateBOMView(product_uid)
             print("\nBack in Run CTB - after Create BOM View")
             
@@ -1099,6 +1104,7 @@ class RunCTB(Resource):
 
             CreateOrderView(desired_qty, parent_product)
             print("\nBack in Run CTB - after Create Order View")           
+
 
             query = """
                     SELECT * FROM pmctb.OrderView;
@@ -1421,8 +1427,8 @@ class RunOrderList(Resource):
             # Subtract SubAssembly Inventory and then Loose Part Inventory to calculate Order Qty
             query = """
                     SELECT orderQtyAfterSub.*,
-                        SUM(inventory.inv_qty) AS rawInv,
-                        if (addlOrderQtyNeeded <= 0 , 0, addlOrderQtyNeeded - SUM(inventory.inv_qty)) AS orderQty
+                        SUM(rawInventory.inv_qty) AS rawInv,
+                        if (addlOrderQtyNeeded <= 0 , 0, addlOrderQtyNeeded - SUM(rawInventory.inv_qty)) AS orderQty
                     FROM (
                         SELECT OrderView.*,
                             SUM(childInv) AS subAssemblyQty,
@@ -1433,21 +1439,30 @@ class RunOrderList(Resource):
                             # CONVERT INVENTORY INTO CHILD COMPONENTS
                             SELECT *,
                                 inv_qty * RequiredQTY AS childInv
-                            FROM pmctb.inventory
+                            FROM (
+                                SELECT * 
+                                FROM pmctb.inventory
+                                WHERE inventory.inv_available_date <= NOW() AND
+                                inventory.inv_loc = \'""" + build_geo + """\'
+                                ) AS assemblyInventory
                             LEFT JOIN pmctb.CTBView
-                                ON GrandParent_BOM_pn = inv_pn
+                                ON GrandParent_BOM_pn = assemblyInventory.inv_pn
                             ) AS childInv
                             ON OrderView.child_lft = childInv.child_lft
                         WHERE childInv.gp_lft >= OrderView.gp_lft AND
                             childInv.gp_rgt <= OrderView.gp_rgt
                         GROUP BY childInv.child_lft
                         ) AS orderQtyAfterSub
-                    LEFT JOIN pmctb.inventory
-                        ON orderQtyAfterSub.child_pn = inventory.inv_pn
-                    WHERE inventory.inv_available_date <= NOW() AND
+                    LEFT JOIN (
+                        SELECT * 
+                        FROM pmctb.inventory
+                        WHERE inventory.inv_available_date <= NOW() AND
                         inventory.inv_loc = \'""" + build_geo + """\'
+                        ) AS rawInventory
+                        ON orderQtyAfterSub.child_pn = rawInventory.inv_pn
                     GROUP BY orderQtyAfterSub.child_lft;
                     """
+
             print(query)
             ctb = execute(query, 'get', conn)
 
