@@ -1093,20 +1093,15 @@ class RunCTB(Resource):
 
             CreateBOMView(product_uid)
             print("\nBack in Run CTB - after Create BOM View")
-            # Get Product Specific Data
+            
             CreateCTBView
             print("\nBack in Run CTB - after Create CTB View")
+
+            CreateOrderView(desired_qty, parent_product)
+            print("\nBack in Run CTB - after Create Order View")           
+
             query = """
-                    SELECT 
-                        BOM_level, 
-                        GrandParent_BOM_pn, 
-                        gp_lft, 
-                        Child_pn,
-                        Sum(RequiredQty) AS QtyPerAssembly,
-                        Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
-                    FROM pmctb.CTBView
-                    WHERE GrandParent_BOM_pn = \'""" + parent_product + """\'
-                    GROUP BY Child_pn, gp_lft;
+                    SELECT * FROM pmctb.OrderView;
                     """
             print(query)
             ctb = execute(query, 'get', conn)
@@ -1177,9 +1172,9 @@ class RunCTB_old(Resource):
 
 
 # ENDPOINT RETURNS WHAT IS IN BOMVIEW
-class RunOrderList(Resource):
+class GetBOMView(Resource):
     def post(self):
-        print("\nInside Run Order List")
+        print("\nInside GetBOMView")
         response = {}
         items = {}
 
@@ -1207,7 +1202,7 @@ class RunOrderList(Resource):
             return ctb['result']
         
         except:
-            raise BadRequest('Run Order List failed, please try again later.')
+            raise BadRequest('Get BOM View failed, please try again later.')
         finally:
             disconnect(conn)
 
@@ -1269,8 +1264,6 @@ def CreateBOMView(product_uid):
         disconnect(conn)
 
 
-
-
 # CREATES TEMPORARY CTB TABLE (CTBView) FOR USE IN CTB
 def CreateCTBView(self):
     try:
@@ -1293,9 +1286,11 @@ def CreateCTBView(self):
                     SELECT
                         grandparent_lvl.BOM_level    
                         , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
-                        , grandparent_lvl.BOM_lft as gp_lft    
-                        , child_lvl.BOM_pn as Child_pn 
-                        , child_lvl.BOM_lft    
+                        , grandparent_lvl.BOM_lft as gp_lft
+                        , grandparent_lvl.BOM_rgt as gp_rgt     
+                        , child_lvl.BOM_pn as child_pn
+                        , child_lvl.BOM_Parent
+                        , child_lvl.BOM_lft as child_lft   
                         , child_lvl.BOM_qty as Qty_per
                         , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty                         -- Magic Formula from Joe Celko
                     FROM    
@@ -1304,7 +1299,7 @@ def CreateCTBView(self):
                         , pmctb.BOMView child_lvl    
                     WHERE    
                         ((parent_lvl.BOM_lft) Between (grandparent_lvl.BOM_lft+1) And (grandparent_lvl.BOM_rgt))    -- Find all parts within the grandparent levels    
-                    AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                                     -- Find only the children    
+                        AND (child_lvl.BOM_lft)=child_lvl.BOM_rgt-1                                                     -- Find only the children    
                         AND ((child_lvl.BOM_lft) Between (parent_lvl.BOM_lft) And (parent_lvl.BOM_rgt) )            -- Find just the children that report to the parents    
                     GROUP BY    
                         grandparent_lvl.BOM_level   
@@ -1314,9 +1309,9 @@ def CreateCTBView(self):
                         , child_lvl.BOM_lft    
                         , child_lvl.BOM_qty    
                     ORDER BY    
-                        grandparent_lvl.BOM_level
-                        , grandparent_lvl.BOM_pn    
-                        , child_lvl.BOM_lft 
+                        gp_lft,
+                        child_lft
+                    );
                     """
         # print(query)
         create = execute(query, 'get', conn)
@@ -1329,6 +1324,141 @@ def CreateCTBView(self):
         raise BadRequest('BOM Engine failed, please try again later.')
     finally:
         disconnect(conn)
+
+
+# CREATES TEMPORARY ORDER TABLE (OrderView) FOR USE IN CTB
+def CreateOrderView(desired_qty, parent_product):
+    try:
+        conn = connect()
+        print("\nInside Create Order View")
+        print(desired_qty)
+        print(parent_product)
+
+        # Drop BOMView
+        query1 = """
+                    DROP VIEW IF EXISTS pmctb.OrderView;
+                """
+
+        drop = execute(query1, 'post', conn)
+        # print(drop)
+        if drop["code"] == 281:
+            print("CTBView dropped")
+        
+        # Create CTBView
+        query = """
+                    CREATE VIEW pmctb.OrderView AS ( 
+                    SELECT 
+                        BOM_level, 
+                        GrandParent_BOM_pn, 
+                        gp_lft, 
+                        gp_rgt,
+                        child_pn,
+                        child_lft,
+                        BOM_Parent,
+                        Sum(RequiredQty) AS QtyPerAssembly,
+                        Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
+                    FROM pmctb.CTBView
+                    WHERE GrandParent_BOM_pn = \'""" + parent_product + """\'
+                    GROUP BY Child_pn, gp_lft
+                    );
+                    """
+        # print(query)
+        create = execute(query, 'get', conn)
+        print("BOMView Created")
+        print(create["code"])
+
+        return create['result']
+    
+    except:
+        raise BadRequest('Create Order View failed, please try again later.')
+    finally:
+        disconnect(conn)
+
+# END CTB
+
+
+# -- 4.  SUBTRACT INVENTORY
+
+# ENDPOINT RETURNS WHAT TO ORDER
+class RunOrderList(Resource):
+    def post(self):
+        print("\nInside Run Order List")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            # print("Received:", data)
+
+
+            # Save Input Data
+            product_uid = data["product_uid"]
+            print("product_uid:", product_uid)
+
+            parent_product = data["product"]
+            print("product:", parent_product, type(parent_product))
+
+            desired_qty = int(data["qty"])
+            print("qty:", desired_qty, type(desired_qty))
+
+            build_geo = data["location"]
+            print("Build Geography:", build_geo)
+
+
+            # Not sure if I need to return all Views
+            CreateBOMView(product_uid)
+            print("\nBack in Run CTB - after Create BOM View")
+            
+            CreateCTBView
+            print("\nBack in Run CTB - after Create CTB View")
+
+            CreateOrderView(desired_qty, parent_product)
+            print("\nBack in Run CTB - after Create Order View") 
+
+
+            # Subtract SubAssembly Inventory and then Loose Part Inventory to calculate Order Qty
+            query = """
+                    SELECT orderQtyAfterSub.*,
+                        SUM(inventory.inv_qty) AS rawInv,
+                        if (addlOrderQtyNeeded <= 0 , 0, addlOrderQtyNeeded - SUM(inventory.inv_qty)) AS orderQty
+                    FROM (
+                        SELECT OrderView.*,
+                            SUM(childInv) AS subAssemblyQty,
+                            OrderView.RequiredQty - SUM(childInv) AS deltaQtyNeeded,
+                            if(OrderView.RequiredQty - SUM(childInv) < 0,0, OrderView.RequiredQty - SUM(childInv)) AS addlOrderQtyNeeded
+                        FROM pmctb.OrderView
+                        LEFT JOIN (
+                            # CONVERT INVENTORY INTO CHILD COMPONENTS
+                            SELECT *,
+                                inv_qty * RequiredQTY AS childInv
+                            FROM pmctb.inventory
+                            LEFT JOIN pmctb.CTBView
+                                ON GrandParent_BOM_pn = inv_pn
+                            ) AS childInv
+                            ON OrderView.child_lft = childInv.child_lft
+                        WHERE childInv.gp_lft >= OrderView.gp_lft AND
+                            childInv.gp_rgt <= OrderView.gp_rgt
+                        GROUP BY childInv.child_lft
+                        ) AS orderQtyAfterSub
+                    LEFT JOIN pmctb.inventory
+                        ON orderQtyAfterSub.child_pn = inventory.inv_pn
+                    WHERE inventory.inv_available_date <= NOW() AND
+                        inventory.inv_loc = \'""" + build_geo + """\'
+                    GROUP BY orderQtyAfterSub.child_lft;
+                    """
+            print(query)
+            ctb = execute(query, 'get', conn)
+
+            return ctb['result']
+        
+        except:
+            raise BadRequest('Run Order List failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
 
 
 
@@ -1963,6 +2093,7 @@ api.add_resource(ImportPath, '/api/v2/ImportPath')
 api.add_resource(AllProducts, "/api/v2/AllProducts")
 api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 api.add_resource(GetBOM, "/api/v2/GetBOM")
+api.add_resource(GetBOMView, "/api/v2/GetBOMView")
 api.add_resource(RunCTB, "/api/v2/RunCTB")
 api.add_resource(RunOrderList, "/api/v2/RunOrderList")
 
