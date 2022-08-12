@@ -3,6 +3,7 @@
 
 
 # SECTION 1:  IMPORT FILES AND FUNCTIONS
+from unittest import result
 from flask import Flask, request, render_template, url_for, redirect
 from flask_restful import Resource, Api
 from flask_mail import Mail, Message  # used for email
@@ -726,12 +727,12 @@ def TraverseTable(file, filename):
 
         # FIND LFT
         for items in file:
-            # print("\nStarting on New Row")
+            print("\nStarting on New Row")
             # print(data.index(items), type(data.index(items)), items)
             previousLevel = currentLevel
-            # print("Previous Level: ", previousLevel, type(previousLevel))
+            print("Previous Level: ", previousLevel, type(previousLevel))
             previouslft = lft
-            # print("Previous lft: ", previouslft, type(previouslft))
+            print("Previous lft: ", previouslft, type(previouslft))
             previousrgt = rgt
             # print("Previous rgt: ", previousrgt, type(previousrgt))
 
@@ -791,24 +792,25 @@ def TraverseTable(file, filename):
                     return("Qty does not exist")
 
 
-                items.extend(['lft', 'rgt', 'Parent'])
+                items.extend(['lft', 'rgt', 'Parent', 'Parent_BOM'])
                 # print(data.index(items), items)
                 
                 lftIndex = items.index('lft')
                 rgtIndex = items.index('rgt')
                 parentIndex = items.index('Parent')
-                # print(levelIndex, lftIndex, rgtIndex, parentIndex, type(parentIndex))
+                parentBOMIndex = items.index('Parent_BOM')
+                print(levelIndex, lftIndex, rgtIndex, parentIndex, parentBOMIndex, type(parentIndex))
 
             
             # If it is the first element (ie Top Level Assembly) then set lft and rgt
             elif file.index(items) == 1:
                 # print(data[data.index(items)])
                 currentLevel = 0
-                # print("Current Level: ", currentLevel, type(currentLevel))
+                print("Current Level: ", currentLevel, type(currentLevel))
                 lft = file.index(items)
                 rgt = 0
                 items.extend([lft, rgt, 'Parent']) 
-                # print(items)
+                print(items)
                 # print(data.index(items), items)
                 
 
@@ -979,6 +981,7 @@ def TraverseTable(file, filename):
                 if (items[PNIndex] not in parents):
                     parents.append(items[PNIndex])
 
+            print(tree)
             print("Finished one part")
                 
             # print(data.index(items), items)
@@ -1096,17 +1099,12 @@ class RunCTB(Resource):
             # Get Product Specific Data
             CreateCTBView
             print("\nBack in Run CTB - after Create CTB View")
+
+            CreateOrderView(desired_qty, parent_product)
+            print("\nBack in Run CTB - after Create Order View")           
+
             query = """
-                    SELECT 
-                        BOM_level, 
-                        GrandParent_BOM_pn, 
-                        gp_lft, 
-                        Child_pn,
-                        Sum(RequiredQty) AS QtyPerAssembly,
-                        Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
-                    FROM pmctb.CTBView
-                    WHERE GrandParent_BOM_pn = \'""" + parent_product + """\'
-                    GROUP BY Child_pn, gp_lft;
+                    SELECT * FROM pmctb.OrderView;
                     """
             print(query)
             ctb = execute(query, 'get', conn)
@@ -1269,8 +1267,6 @@ def CreateBOMView(product_uid):
         disconnect(conn)
 
 
-
-
 # CREATES TEMPORARY CTB TABLE (CTBView) FOR USE IN CTB
 def CreateCTBView(self):
     try:
@@ -1294,8 +1290,9 @@ def CreateCTBView(self):
                         grandparent_lvl.BOM_level    
                         , grandparent_lvl.BOM_pn as GrandParent_BOM_pn   
                         , grandparent_lvl.BOM_lft as gp_lft    
-                        , child_lvl.BOM_pn as Child_pn 
-                        , child_lvl.BOM_lft    
+                        , child_lvl.BOM_pn as child_pn
+                        , child_lvl.BOM_Parent
+                        , child_lvl.BOM_lft as child_lft   
                         , child_lvl.BOM_qty as Qty_per
                         , round(POWER(10,Sum(Log(10,parent_lvl.BOM_qty))),2) as RequiredQty                         -- Magic Formula from Joe Celko
                     FROM    
@@ -1317,6 +1314,7 @@ def CreateCTBView(self):
                         grandparent_lvl.BOM_level
                         , grandparent_lvl.BOM_pn    
                         , child_lvl.BOM_lft 
+                    );
                     """
         # print(query)
         create = execute(query, 'get', conn)
@@ -1329,6 +1327,142 @@ def CreateCTBView(self):
         raise BadRequest('BOM Engine failed, please try again later.')
     finally:
         disconnect(conn)
+
+
+# CREATES TEMPORARY ORDER TABLE (OrderView) FOR USE IN CTB
+def CreateOrderView(desired_qty, parent_product):
+    try:
+        conn = connect()
+        print("\nInside Create Order View")
+        print(desired_qty)
+        print(parent_product)
+
+        # Drop BOMView
+        query1 = """
+                    DROP VIEW IF EXISTS pmctb.OrderView;
+                """
+
+        drop = execute(query1, 'post', conn)
+        # print(drop)
+        if drop["code"] == 281:
+            print("CTBView dropped")
+        
+        # Create CTBView
+        query = """
+                    CREATE VIEW pmctb.OrderView AS ( 
+                    SELECT 
+                        BOM_level, 
+                        GrandParent_BOM_pn, 
+                        gp_lft, 
+                        child_pn,
+                        child_lft,
+                        BOM_Parent,
+                        Sum(RequiredQty) AS QtyPerAssembly,
+                        Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
+                    FROM pmctb.CTBView
+                    WHERE GrandParent_BOM_pn = \'""" + parent_product + """\'
+                    GROUP BY Child_pn, gp_lft
+                    );
+                    """
+        # print(query)
+        create = execute(query, 'get', conn)
+        print("BOMView Created")
+        print(create["code"])
+
+        return create['result']
+    
+    except:
+        raise BadRequest('Create Order View failed, please try again later.')
+    finally:
+        disconnect(conn)
+
+# END CTB
+
+
+# STEP 4.  SUBTRACT INVENTORY
+#    PART 1:  BREAK DOWN PARENTS INTO CHILDREN
+
+class BreakDownInventory(Resource):
+    def post(self):
+        print("\nInside BreakDownInventory")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+            # data = request.get_json(force=True)
+            # # print("Received:", data)
+            # product_uid = data["product_uid"]
+            # print("product_uid:", product_uid)
+
+            # parent_product = data["product"]
+            # print("product:", parent_product, type(parent_product))
+
+            # desired_qty = int(data["qty"])
+            # print("qty:", desired_qty, type(desired_qty))
+
+            # CreateBOMView(product_uid)
+            # print("\nBack in Run CTB - after Create BOM View")
+            # # Get Product Specific Data
+            # CreateCTBView
+            # print("\nBack in Run CTB - after Create CTB View")
+            query = """
+                    SELECT * FROM pmctb.OrderView;
+                    """
+            print("Query: ", query)
+            ctb = execute(query, 'get', conn)
+
+            print("CTB: ",ctb)
+            print("Here 1")
+            print("CTB Result: ",ctb["result"])
+
+            for child in ctb["result"]:
+                # print("\nin loop")
+                # print(child)
+                # print("Child: ", child["child_pn"])
+                if child["BOM_Parent"] =="Parent":
+                    print("Child: ", child["child_pn"], child["child_lft"], child["RequiredQty"])
+                    query = """
+                        SELECT 
+                            BOM_level, 
+                            GrandParent_BOM_pn, 
+                            gp_lft, 
+                            child_pn,
+                            child_lft,
+                            BOM_Parent,
+                            Sum(RequiredQty) AS QtyPerAssembly,
+                            Sum(RequiredQty) * \'""" + str(child["RequiredQty"]) + """\' AS RequiredQty
+                        FROM pmctb.CTBView
+                        WHERE gp_lft = \'""" + str(child["child_lft"]) + """\'
+                        GROUP BY Child_pn, gp_lft;
+                    """
+                    # print(query)
+                    parentchildren = execute(query, 'get', conn)
+                    print(parentchildren)
+
+
+            return ctb['result']
+        
+        except:
+            raise BadRequest('Break Down Inventory failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1725,8 +1859,9 @@ class RunCTBVishal(Resource):
 
 
             tree = json.loads(product['product_tree'])
+            print(tree)
             parents = json.loads(product['product_parents'])
-            # print(parents)
+            print(parents)
 
             ctb_list = []
 
@@ -1791,6 +1926,7 @@ class RunOrderListVishal(Resource):
 
 
             tree = json.loads(product['product_tree'])
+            print(tree)
             parents = json.loads(product['product_parents'])
             # print(parents)
 
@@ -1965,6 +2101,8 @@ api.add_resource(Products, "/api/v2/Products/<string:product_uid>")
 api.add_resource(GetBOM, "/api/v2/GetBOM")
 api.add_resource(RunCTB, "/api/v2/RunCTB")
 api.add_resource(RunOrderList, "/api/v2/RunOrderList")
+api.add_resource(BreakDownInventory, "/api/v2/BreakDownInventory")
+
 
 api.add_resource(RunCTBVishal, "/api/v2/RunCTBVishal")
 api.add_resource(RunOrderListVishal, "/api/v2/RunOrderListVishal")
