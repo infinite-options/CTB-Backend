@@ -1368,7 +1368,7 @@ def CreateOrderView(desired_qty, parent_product):
                         Sum(RequiredQty) * \'""" + str(desired_qty) + """\' AS RequiredQty
                     FROM pmctb.CTBView
                     WHERE GrandParent_BOM_pn = \'""" + parent_product + """\'
-                    GROUP BY Child_pn, gp_lft
+                    GROUP BY child_lft
                     );
                     """
         # print(query)
