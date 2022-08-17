@@ -1406,47 +1406,41 @@ def CreateInvChildView(parent_product, build_geo):
         # Create InvChildView
         query = """
                 CREATE VIEW pmctb.InvChildView AS ( 
-                SELECT inv_loc,
-                    child_pn,
-                    child_lft,
-                    Assy,
-                    SUM(childInv) as child_inv
+                SELECT *,
+                    inv_qty * RequiredQTY AS childInv
                 FROM (
-                    # CONVERTS AVAILABLE INVENTORY INTO ITS CHILD COMPONENTS
+                    # SHOWS AVAILABLE INVENTORY IN A SPECIFIC GEOGRAPHY
                     SELECT *,
-                        inv_qty * RequiredQTY AS childInv
-                    FROM (
-                        # SHOWS AVAILABLE INVENTORY IN A SPECIFIC GEOGRAPHY
-                        SELECT *,
-                            # THIS IF STATEMENT DETERMINES IF SUBASSEMBLIES ARE UNIQUE
-                            if(inv_pn IN (
-                                SELECT DISTINCT v1.GrandParent_BOM_pn
-                                -- SELECT *
-                                FROM  pmctb.CTBView v1,
-                                    pmctb.CTBView v2
-                                WHERE v1.GrandParent_BOM_pn = v2.GrandParent_BOM_pn AND
-                                    v1.gp_lft != v2.gp_lft AND
-                                    v1.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
-                                    v1.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
-                                    v2.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
-                                    v2.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\')), "Options", "Unique") as Assy 
-                        FROM pmctb.inventory
-                        WHERE inventory.inv_available_date <= NOW() AND
-                        inventory.inv_loc = \'""" + build_geo + """\'
-                        ) AS assemblyInventory
-                    JOIN pmctb.CTBView
-                        ON GrandParent_BOM_pn = assemblyInventory.inv_pn
-                    WHERE CTBView.gp_lft >= (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
-                        CTBView.gp_rgt <= (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\')
-                    ) AS subAssyInv
-                GROUP BY child_lft, Assy
+                        # THIS IF STATEMENT DETERMINES IF SUBASSEMBLIES ARE UNIQUE
+                        if(inv_pn IN (
+                            SELECT DISTINCT v1.GrandParent_BOM_pn
+                            -- SELECT *
+                            FROM  pmctb.CTBView v1,
+                                pmctb.CTBView v2
+                            WHERE v1.GrandParent_BOM_pn = v2.GrandParent_BOM_pn AND
+                                v1.gp_lft != v2.gp_lft AND
+                                v1.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                                v1.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                                v2.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                                v2.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\')), "Options", "Unique") as Assy 
+                    FROM pmctb.inventory
+                    WHERE inventory.inv_available_date <= NOW() AND
+                    inventory.inv_loc = \'""" + build_geo + """\'
+                    ) AS assemblyInventory
+                JOIN pmctb.CTBView
+                    ON GrandParent_BOM_pn = assemblyInventory.inv_pn
+                WHERE CTBView.gp_lft >= (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                    CTBView.gp_rgt <= (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\')
                 );
-            """
+                """
         # print(query)
         create = execute(query, 'get', conn)
         # print(create)
         print("InvChildView Created")
-        print(create["code"])
+        print(create["code"], type(create["code"]))
+        if create["code"] == 490:
+            print(query)
+            print(create)
 
         return create['result']
     
@@ -1503,20 +1497,79 @@ class RunOrderList(Resource):
 
 
             # Subtract SubAssembly Inventory and then Loose Part Inventory to calculate Order Qty
-            query = """
+            specificPartQuery = """
                     SELECT *,
-                        RequiredQty - child_inv AS OrderQty
+                        if(childInv IS NOT NULL, RequiredQty - childInv, RequiredQty) AS OrderQty
                     FROM pmctb.OrderView
-                    LEFT JOIN pmctb.InvChildView
-                        ON OrderView.child_pn = InvChildView.child_pn AND
-                        OrderView.child_lft = InvChildView.child_lft
-                    WHERE InvChildView.Assy = "Unique";
+                    LEFT JOIN (
+                        SELECT inv_loc,
+                                inv_pn AS parent_pn,
+                                child_pn,
+                                child_lft,
+                                Assy,
+                                SUM(childInv) as childInv
+                        FROM 	(
+                            SELECT * 
+                            FROM pmctb.InvChildView
+                            WHERE Assy = 'Unique'
+                            ) AS subAssyInv
+                        GROUP BY child_lft, Assy
+                        ) AS UniqueInv
+                        ON OrderView.child_pn = UniqueInv.child_pn AND
+                        OrderView.child_lft = UniqueInv.child_lft;
                     """
 
-            print(query)
-            ctb = execute(query, 'get', conn)
+            # print(specificPartQuery)
+            ctb = execute(specificPartQuery, 'get', conn)
+            print("after ctb query")
+            print(ctb['code'])
+            if ctb["code"] == 490:
+                print(specificPartQuery)
+                print(ctb)
 
-            return ctb['result']
+        
+
+             # Return Optional Inventory for User Allocation
+            optionalPartQuery = """
+                    SELECT inv_uid,
+                        Assy,
+                        inv_qty, 
+                        inv_loc,
+                        inv_qty_unit, 
+                        inv_available_date,
+                        GrandParent_BOM_pn AS parent_pn,
+                        gp_lft, 
+                        gp_rgt, 
+                        child_pn, 
+                        child_lft, 
+                        Qty_per, 
+                        RequiredQty,
+                        inv_qty * RequiredQTY AS SubAssyQty
+                    FROM (
+                        SELECT * 
+                        FROM pmctb.InvChildView
+                        WHERE Assy = 'Options'
+                        ) AS subAssyInv
+                    ORDER BY GrandParent_BOM_pn, gp_lft, child_lft;
+                    """
+
+            # print(optionalPartQuery)
+            allocation= execute(optionalPartQuery, 'get', conn)
+            print("after allocation query")
+            print(allocation['code'])
+            if allocation["code"] == 490:
+                print(optionalPartQuery)
+                print(allocation)
+            # print(allocation['result'])
+
+
+            
+            return {'ctb': ctb['result'], 'allocation': allocation['result']}
+            # return {'ctb': 'y0', 'allocation': 'y1'}
+
+            # return(ctb['result'], allocation['result'])
+            # return('ctb': ctb['result'], 'allocation': allocation['result'])
+            # return allocation['result']
         
         except:
             raise BadRequest('Run Order List failed, please try again later.')
