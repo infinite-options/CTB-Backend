@@ -1563,8 +1563,76 @@ class RunOrderList(Resource):
             # print(allocation['result'])
 
 
+
+            # RETURNS OPTIONS IN A BETTER FASHION
+            optionalPartQuery2 = """
+                    SELECT inv.*,
+                        childinv.child_pn,
+                        if(Qty_per IS NULL, inv_qty, Qty_per * inv_qty) AS avail_inv
+                    FROM (
+                            SELECT *,
+                                # THIS IF STATEMENT DETERMINES IF SUBASSEMBLIES ARE UNIQUE
+                                if(inv_pn IN (
+                                    SELECT DISTINCT v1.GrandParent_BOM_pn
+                                    -- SELECT *
+                                    FROM  pmctb.CTBView v1,
+                                        pmctb.CTBView v2
+                                    WHERE v1.GrandParent_BOM_pn = v2.GrandParent_BOM_pn AND
+                                        v1.gp_lft != v2.gp_lft AND
+                                        v1.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = "A") AND
+                                        v1.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = "A") AND
+                                        v2.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = "A") AND
+                                        v2.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = "A")), "Options", "Unique") as Assy 
+                            FROM pmctb.inventory
+                            WHERE inventory.inv_available_date <= NOW() AND
+                            inventory.inv_loc = 'France'
+                        ) AS inv
+                    LEFT JOIN (
+                    # RETURNS JUST THE CHILDREN OF EACH SUBASSEMBLY
+                        SELECT GrandParent_BOM_pn,
+                            child_pn,
+                            Qty_per
+                        FROM pmctb.CTBView
+                        -- WHERE GrandParent_BOM_pn = 'F'
+                        GROUP BY GrandParent_BOM_pn, child_pn
+                        ) AS childinv
+                    ON inv.inv_pn = childinv.GrandParent_BOM_pn
+                    WHERE inv.Assy = 'Options';
+                    """
+
+            # print(optionalPartQuery)
+            allocation2= execute(optionalPartQuery2, 'get', conn)
+            print("after allocation query")
+            print(allocation2['code'])
+            if allocation2["code"] == 490:
+                print(optionalPartQuery2)
+                print(allocation2)
+            # print(allocation['result'])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             
-            return {'ctb': ctb['result'], 'allocation': allocation['result']}
+            return {'ctb': ctb['result'], 'allocation': allocation['result'], 'allocation2': allocation2['result']}
             # return {'ctb': 'y0', 'allocation': 'y1'}
 
             # return(ctb['result'], allocation['result'])
@@ -1575,8 +1643,6 @@ class RunOrderList(Resource):
             raise BadRequest('Run Order List failed, please try again later.')
         finally:
             disconnect(conn)
-
-
 
 
 
