@@ -1579,13 +1579,13 @@ class RunOrderList(Resource):
                                         pmctb.CTBView v2
                                     WHERE v1.GrandParent_BOM_pn = v2.GrandParent_BOM_pn AND
                                         v1.gp_lft != v2.gp_lft AND
-                                        v1.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = "A") AND
-                                        v1.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = "A") AND
-                                        v2.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = "A") AND
-                                        v2.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = "A")), "Options", "Unique") as Assy 
+                                        v1.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                                        v1.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                                        v2.gp_lft > (SELECT BOM_lft FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\') AND
+                                        v2.gp_rgt < (SELECT BOM_rgt FROM pmctb.BOMView WHERE BOM_PN = \'""" + parent_product + """\')), "Options", "Unique") as Assy 
                             FROM pmctb.inventory
                             WHERE inventory.inv_available_date <= NOW() AND
-                            inventory.inv_loc = 'France'
+                            inventory.inv_loc = \'""" + build_geo + """\'
                         ) AS inv
                     LEFT JOIN (
                     # RETURNS JUST THE CHILDREN OF EACH SUBASSEMBLY
