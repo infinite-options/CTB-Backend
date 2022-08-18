@@ -1279,7 +1279,7 @@ def CreateCTBView(self):
         conn = connect()
         print("\nInside Create CTB View")
 
-        # Drop BOMView
+        # Drop CTBView
         query1 = """
                     DROP VIEW IF EXISTS pmctb.CTBView;
                 """
@@ -1343,7 +1343,7 @@ def CreateOrderView(desired_qty, parent_product):
         print("desired qty:", desired_qty)
         print("parent product:", parent_product)
 
-        # Drop BOMView
+        # Drop OrderView
         query1 = """
                     DROP VIEW IF EXISTS pmctb.OrderView;
                 """
@@ -1393,7 +1393,7 @@ def CreateInvChildView(parent_product, build_geo):
         print("parent product:", parent_product)
         print("build geo:", build_geo)
 
-        # Drop BOMView
+        # Drop InvChildView
         query1 = """
                     DROP VIEW IF EXISTS pmctb.InvChildView;
                 """
@@ -1435,7 +1435,7 @@ def CreateInvChildView(parent_product, build_geo):
                 """
         # print(query)
         create = execute(query, 'get', conn)
-        # print(create)
+        print(create)
         print("InvChildView Created")
         print(create["code"], type(create["code"]))
         if create["code"] == 490:
@@ -1448,6 +1448,78 @@ def CreateInvChildView(parent_product, build_geo):
         raise BadRequest('Create Inventory Child View failed, please try again later.')
     finally:
         disconnect(conn)
+
+
+# CREATES WorkingCTBView TABLE (WorkingCTBView) FOR USE IN ALLOCATION
+def CreateWorkingCTBView(self):
+    try:
+        conn = connect()
+        print("\nInside Working CTB View")
+
+        # Drop WorkingCTBView
+        query1 = """
+                    DROP VIEW IF EXISTS pmctb.WorkingCTBView;
+                """
+
+        drop = execute(query1, 'post', conn)
+        # print(drop)
+        if drop["code"] == 281:
+            print("WorkingCTBView dropped")
+        
+        # Create WorkingCTBView
+        query = """
+                CREATE VIEW pmctb.WorkingCTBView AS ( 
+                SELECT OrderView.*,
+                    UniqueInv.inv_loc, parent_pn, Assy, childInv,
+                    if(childInv IS NOT NULL, RequiredQty - childInv, RequiredQty) AS OrderQty
+                FROM pmctb.OrderView
+                LEFT JOIN (
+                    SELECT inv_loc,
+                            inv_pn AS parent_pn,
+                            child_pn,
+                            child_lft,
+                            Assy,
+                            SUM(childInv) as childInv
+                    FROM 	(
+                        SELECT * 
+                        FROM pmctb.InvChildView
+                        WHERE Assy = 'Unique'
+                        ) AS subAssyInv
+                    GROUP BY child_lft, Assy
+                    ) AS UniqueInv
+                    ON OrderView.child_pn = UniqueInv.child_pn AND
+                    OrderView.child_lft = UniqueInv.child_lft
+                );
+                """
+        # print(query)
+        create = execute(query, 'get', conn)
+        print(create)
+        print("WorkingCTBView Created")
+        print(create["code"], type(create["code"]))
+        if create["code"] == 490:
+            print(query)
+            print(create)
+
+        return create['result']
+    
+    except:
+        raise BadRequest('Create WorkingCTB View failed, please try again later.')
+    finally:
+        disconnect(conn)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # END CTB
 
@@ -1495,38 +1567,70 @@ class RunOrderList(Resource):
             CreateInvChildView(parent_product, build_geo)
             print("\nBack in Run CTB - after Create Inventory Child View") 
 
+            CreateWorkingCTBView(self)
+            print("\nBack in Run CTB - after WorkingCTBView") 
+
+
+            # # Drop WorkingCTBView
+            # dropquery = """
+            #             DROP VIEW IF EXISTS pmctb.WorkingCTBView;
+            #         """
+
+            # drop = execute(dropquery, 'post', conn)
+            # print(drop)
+            # if drop["code"] == 281:
+            #     print("WorkingCTBView dropped")
+
+
+            # # Subtract SubAssembly Inventory and then Loose Part Inventory to calculate Order Qty
+            # specificPartQuery = """
+            #         # CREATE VIEW pmctb.WorkingCTBView AS ( 
+            #         SELECT OrderView.*,
+            #             UniqueInv.inv_loc, parent_pn, Assy, childInv,
+            #             if(childInv IS NOT NULL, RequiredQty - childInv, RequiredQty) AS OrderQty
+            #         FROM pmctb.OrderView
+            #         LEFT JOIN (
+            #             SELECT inv_loc,
+            #                     inv_pn AS parent_pn,
+            #                     child_pn,
+            #                     child_lft,
+            #                     Assy,
+            #                     SUM(childInv) as childInv
+            #             FROM 	(
+            #                 SELECT * 
+            #                 FROM pmctb.InvChildView
+            #                 WHERE Assy = 'Unique'
+            #                 ) AS subAssyInv
+            #             GROUP BY child_lft, Assy
+            #             ) AS UniqueInv
+            #             ON OrderView.child_pn = UniqueInv.child_pn AND
+            #             OrderView.child_lft = UniqueInv.child_lft
+            #         # );
+            #         """
+
+            # # print(specificPartQuery)
+            # ctb = execute(specificPartQuery, 'get', conn)
+            # print("after ctb query")
+            # print(ctb)
+            # print(ctb['code'])
+            # if ctb["code"] == 490:
+            #     print(specificPartQuery)
+            #     print(ctb)
+
 
             # Subtract SubAssembly Inventory and then Loose Part Inventory to calculate Order Qty
             specificPartQuery = """
-                    SELECT *,
-                        if(childInv IS NOT NULL, RequiredQty - childInv, RequiredQty) AS OrderQty
-                    FROM pmctb.OrderView
-                    LEFT JOIN (
-                        SELECT inv_loc,
-                                inv_pn AS parent_pn,
-                                child_pn,
-                                child_lft,
-                                Assy,
-                                SUM(childInv) as childInv
-                        FROM 	(
-                            SELECT * 
-                            FROM pmctb.InvChildView
-                            WHERE Assy = 'Unique'
-                            ) AS subAssyInv
-                        GROUP BY child_lft, Assy
-                        ) AS UniqueInv
-                        ON OrderView.child_pn = UniqueInv.child_pn AND
-                        OrderView.child_lft = UniqueInv.child_lft;
+                    SELECT * FROM pmctb.WorkingCTBView
                     """
 
             # print(specificPartQuery)
             ctb = execute(specificPartQuery, 'get', conn)
             print("after ctb query")
+            # print(ctb)
             print(ctb['code'])
             if ctb["code"] == 490:
                 print(specificPartQuery)
                 print(ctb)
-
         
 
              # Return Optional Inventory for User Allocation
