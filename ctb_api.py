@@ -325,7 +325,13 @@ def get_new_inventoryUID(conn):
     newProductQuery = execute("call pmctb.new_inventory_uid();", 'get', conn)
     if newProductQuery['code'] == 280:
         return newProductQuery['result'][0]['new_id']
-    return "Could not generate new product UID", 500
+    return "Could not generate new inventory UID", 500
+
+def get_new_allocationUID(conn):
+    newProductQuery = execute("call pmctb.new_allocation_uid();", 'get', conn)
+    if newProductQuery['code'] == 280:
+        return newProductQuery['result'][0]['new_id']
+    return "Could not generate new allocation UID", 500
 
 
 
@@ -1706,12 +1712,12 @@ class RunOrderList(Resource):
 
             # print(optionalPartQuery)
             allocation2= execute(optionalPartQuery2, 'get', conn)
-            print("after allocation query")
+            print("after allocation2 query")
             print(allocation2['code'])
             if allocation2["code"] == 490:
                 print(optionalPartQuery2)
                 print(allocation2)
-            # print(allocation['result'])
+            # print(allocation2['result'])
 
 
 
@@ -1907,7 +1913,252 @@ class Inventory(Resource):
             disconnect(conn)
 
 
-    
+
+
+
+class GetAllocation(Resource):
+    def get(self,product_uid):
+        print("\nInside Get Allocations")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block", product_uid)
+
+            # Get Product Specific Data
+            query1 = """
+                    
+                        SELECT *
+                        FROM pmctb.allocation AS p,
+                        JSON_TABLE (p.allocation_json, '$[*]'
+                            COLUMNS (
+                                    Allocation_id FOR ORDINALITY,
+                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
+                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
+                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
+                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
+                                    Allocation_allocated_qty INT PATH '$.allocated')
+                                    ) AS BOM;
+                    """
+            query1 = """
+                    SELECT *
+                    FROM (
+                        SELECT *
+                        FROM pmctb.allocation AS p,
+                        JSON_TABLE (p.allocation_json, '$[*]'
+                            COLUMNS (
+                                    Allocation_id FOR ORDINALITY,
+                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
+                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
+                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
+                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
+                                    Allocation_allocated_qty INT PATH '$.allocated')
+                                    ) AS BOM
+                        ) AS allocated
+                        LEFT JOIN pmctb.CTBView
+                        ON 
+                        allocated.Allocation_assy_lft = CTBView.gp_lft
+                    
+                    """  
+
+
+            query = """
+                   SELECT allocation_uid, allocation_date, Allocation_product_uid, Allocation_inventory_uid, Allocation_assy_name, Allocation_assy_lft, Allocation_allocated_qty, GrandParent_BOM_pn, gp_lft, gp_rgt, child_pn, BOM_Parent, child_lft, Qty_per, RequiredQty,
+                        SUM(RequiredQty * Allocation_allocated_qty) AS allocated_qty
+                    FROM (
+                        SELECT *
+                        FROM pmctb.allocation AS p,
+                        JSON_TABLE (p.allocation_json, '$[*]'
+                            COLUMNS (
+                                    Allocation_id FOR ORDINALITY,
+                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
+                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
+                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
+                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
+                                    Allocation_allocated_qty INT PATH '$.allocated')
+                                    ) AS BOM
+                        ) AS allocated
+                    LEFT JOIN pmctb.CTBView
+                        ON 
+                        allocated.Allocation_assy_lft = CTBView.gp_lft
+                    WHERE Allocation_product_uid = '""" + product_uid + """'
+                    GROUP BY CTBView.child_pn, CTBView.child_lft;
+                    """            
+
+
+
+            query1 = """
+                    SELECT *,
+                        SUM(RequiredQty * Allocation_allocated_qty) AS allocated_qty
+                    FROM (
+                        SELECT *
+                        FROM pmctb.allocation AS p,
+                        JSON_TABLE (p.allocation_json, '$[*]'
+                            COLUMNS (
+                                    Allocation_id FOR ORDINALITY,
+                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
+                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
+                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
+                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
+                                    Allocation_allocated_qty INT PATH '$.allocated')
+                                    ) AS BOM
+                        ) AS allocated
+                    LEFT JOIN pmctb.CTBView
+                        ON allocated.Allocation_assy_name = CTBView.GrandParent_BOM_pn AND
+                        allocated.Allocation_assy_lft = CTBView.gp_lft
+                    WHERE Allocation_product_uid = '""" + product_uid + """'
+                    GROUP BY CTBView.child_pn, CTBView.child_lft;
+                    """
+
+            query1 = """
+                        SELECT *
+                        FROM pmctb.allocation;
+                    """
+
+
+            # print(query)
+            allocation = execute(query, 'get', conn)
+            # print(allocation)
+
+            return allocation['result']
+        
+        except:
+            raise BadRequest('Get Allocation Request failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+class Allocation(Resource):
+    def get(self):
+        print("\nInside Get Allocations")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+
+            # Get Product Specific Data
+            query = """
+                        SELECT *
+                        FROM pmctb.allocation;
+                    """
+
+
+            allocation = execute(query, 'get', conn)
+            # print(products)
+
+            return allocation['result']
+        
+        except:
+            raise BadRequest('Products Request failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+    def post(self):
+        print("\nInside ADD Allocation")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            print("Inside try block")
+            allocation_data = request.get_json(force=True)
+            print("Received:", allocation_data)
+
+            for part in allocation_data:
+                print(part)
+
+            jsonBOM = json.dumps(allocation_data)
+
+
+            new_allocation_uid = get_new_allocationUID(conn)
+            print(new_allocation_uid, type(new_allocation_uid))
+            today = getNow()
+            print(today)
+
+
+            # Run query to enter JSON object into Allocation table
+            addAllocation =  """
+                INSERT INTO pmctb.allocation
+                SET allocation_uid =  \'""" + new_allocation_uid + """\',
+                    allocation_date = \'""" + today + """\',
+                    allocation_json = \'""" + jsonBOM + """\';
+
+                """
+
+            items = execute(addAllocation, "post", conn)
+            if items["code"] == 490:
+                print(addAllocation)
+                print("items: ", items)
+            print("Add Allocation Successful")
+            response['allocation'] = "Successful"
+
+            # return allocation_data
+            return response
+        
+        except:
+            raise BadRequest('Add Part failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+    def put(self):
+        print("\nInside UPDATE Inventory")
+        response = {}
+        items = {}
+
+        try:
+            conn = connect()
+            # print("Inside try block")
+            data = request.get_json(force=True)
+            print("Received:", data)
+
+            today = getNow()
+            print(today)
+
+            inv_uid = data["inv_uid"]
+            # print("3")
+            part_inventory = float(data["inv_qty"])
+            inv_location = data["inv_loc"]
+            part_inventory_available_date = data["inv_available_date"]
+
+
+            # Run query to enter new product UID and BOM into Inventory table
+            updateInventory =  '''
+                UPDATE pmctb.inventory
+                SET inv_date = \'''' + today + '''\',
+                    inv_qty = \'''' + str(part_inventory) + '''\',
+                    inv_loc = \'''' + inv_location + '''\',
+                    inv_available_date = \'''' + part_inventory_available_date + '''\'
+                WHERE  inv_uid = \'''' + inv_uid + '''\';
+                '''
+
+            print(updateInventory)
+            print ("7")
+            items = execute(updateInventory, "post", conn)
+            print("items: ", items)
+            print("Add Inventory Successful")
+
+
+            return items
+        
+        except:
+            raise BadRequest('Add Part failed, please try again later.')
+        finally:
+            disconnect(conn)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2384,6 +2635,8 @@ api.add_resource(GetBOM, "/api/v2/GetBOM")
 api.add_resource(GetBOMView, "/api/v2/GetBOMView")
 api.add_resource(RunCTB, "/api/v2/RunCTB")
 api.add_resource(RunOrderList, "/api/v2/RunOrderList")
+api.add_resource(GetAllocation, "/api/v2/GetAllocation/<string:product_uid>")
+api.add_resource(Allocation, "/api/v2/Allocation")
 
 api.add_resource(RunCTBVishal, "/api/v2/RunCTBVishal")
 api.add_resource(RunOrderListVishal, "/api/v2/RunOrderListVishal")
