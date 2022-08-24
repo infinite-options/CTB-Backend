@@ -1928,7 +1928,9 @@ class GetAllocation(Resource):
 
             # Get Product Specific Data
             query = """
-                   SELECT allocation_uid, allocation_date, Allocation_product_uid, Allocation_inventory_uid, Allocation_assy_name, Allocation_assy_lft, Allocation_allocated_qty, GrandParent_BOM_pn, gp_lft, gp_rgt, child_pn, BOM_Parent, child_lft, Qty_per, RequiredQty,
+                    SELECT allocation_date, Allocation_product_uid, Allocation_inventory_uid, Allocation_assy_name, Allocation_assy_lft, 
+                        sum(Allocation_allocated_qty), 
+                        GrandParent_BOM_pn, gp_lft, gp_rgt, child_pn, BOM_Parent, child_lft, Qty_per, RequiredQty,
                         SUM(RequiredQty * Allocation_allocated_qty) AS allocated_qty
                     FROM (
                         SELECT *
