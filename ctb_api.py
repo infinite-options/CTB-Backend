@@ -1927,42 +1927,6 @@ class GetAllocation(Resource):
             print("Inside try block", product_uid)
 
             # Get Product Specific Data
-            query1 = """
-                    
-                        SELECT *
-                        FROM pmctb.allocation AS p,
-                        JSON_TABLE (p.allocation_json, '$[*]'
-                            COLUMNS (
-                                    Allocation_id FOR ORDINALITY,
-                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
-                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
-                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
-                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
-                                    Allocation_allocated_qty INT PATH '$.allocated')
-                                    ) AS BOM;
-                    """
-            query1 = """
-                    SELECT *
-                    FROM (
-                        SELECT *
-                        FROM pmctb.allocation AS p,
-                        JSON_TABLE (p.allocation_json, '$[*]'
-                            COLUMNS (
-                                    Allocation_id FOR ORDINALITY,
-                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
-                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
-                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
-                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
-                                    Allocation_allocated_qty INT PATH '$.allocated')
-                                    ) AS BOM
-                        ) AS allocated
-                        LEFT JOIN pmctb.CTBView
-                        ON 
-                        allocated.Allocation_assy_lft = CTBView.gp_lft
-                    
-                    """  
-
-
             query = """
                    SELECT allocation_uid, allocation_date, Allocation_product_uid, Allocation_inventory_uid, Allocation_assy_name, Allocation_assy_lft, Allocation_allocated_qty, GrandParent_BOM_pn, gp_lft, gp_rgt, child_pn, BOM_Parent, child_lft, Qty_per, RequiredQty,
                         SUM(RequiredQty * Allocation_allocated_qty) AS allocated_qty
@@ -1983,38 +1947,8 @@ class GetAllocation(Resource):
                         ON 
                         allocated.Allocation_assy_lft = CTBView.gp_lft
                     WHERE Allocation_product_uid = '""" + product_uid + """'
-                    GROUP BY CTBView.child_pn, CTBView.child_lft;
+                    GROUP BY CTBView.child_pn, CTBView.child_lft, Allocation_inventory_uid;
                     """            
-
-
-
-            query1 = """
-                    SELECT *,
-                        SUM(RequiredQty * Allocation_allocated_qty) AS allocated_qty
-                    FROM (
-                        SELECT *
-                        FROM pmctb.allocation AS p,
-                        JSON_TABLE (p.allocation_json, '$[*]'
-                            COLUMNS (
-                                    Allocation_id FOR ORDINALITY,
-                                    Allocation_product_uid VARCHAR(255) PATH '$.product_uid',
-                                    Allocation_inventory_uid VARCHAR(255) PATH '$.inv_uid',
-                                    Allocation_assy_name VARCHAR(255) PATH '$.assembly',
-                                    Allocation_assy_lft VARCHAR(255) PATH '$.assy_lft',
-                                    Allocation_allocated_qty INT PATH '$.allocated')
-                                    ) AS BOM
-                        ) AS allocated
-                    LEFT JOIN pmctb.CTBView
-                        ON allocated.Allocation_assy_name = CTBView.GrandParent_BOM_pn AND
-                        allocated.Allocation_assy_lft = CTBView.gp_lft
-                    WHERE Allocation_product_uid = '""" + product_uid + """'
-                    GROUP BY CTBView.child_pn, CTBView.child_lft;
-                    """
-
-            query1 = """
-                        SELECT *
-                        FROM pmctb.allocation;
-                    """
 
 
             # print(query)
