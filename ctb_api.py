@@ -1929,7 +1929,7 @@ class GetAllocation(Resource):
             # Get Product Specific Data
             query = """
                     SELECT allocation_date, Allocation_product_uid, Allocation_inventory_uid, Allocation_assy_name, Allocation_assy_lft, 
-                        sum(Allocation_allocated_qty), 
+                        sum(Allocation_allocated_qty) 
                         GrandParent_BOM_pn, gp_lft, gp_rgt, child_pn, BOM_Parent, child_lft, Qty_per, RequiredQty,
                         SUM(RequiredQty * Allocation_allocated_qty) AS allocated_qty
                     FROM (
@@ -1949,7 +1949,7 @@ class GetAllocation(Resource):
                         ON 
                         allocated.Allocation_assy_lft = CTBView.gp_lft
                     WHERE Allocation_product_uid = '""" + product_uid + """'
-                    GROUP BY CTBView.child_pn, CTBView.child_lft, Allocation_inventory_uid;
+                    GROUP BY CTBView.child_pn, CTBView.child_lft, Allocation_inventory_uid, Allocation_assy_lft;
                     """            
 
 
