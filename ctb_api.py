@@ -2135,17 +2135,44 @@ class AddPartsFromFile(Resource):
 
             f = request.files['filepath']
             stream = io.StringIO(f.stream.read().decode("UTF8"), newline=None)
-            print('stream', (stream))
+            # print('stream', (stream))
             csv_input = csv.reader(stream)
-            print('csv_input', csv_input)
+            # print('csv_input', csv_input)
             for row in csv_input:
-                print('row', row)
+                # print('row', row)
                 upload_data.append(row)
-            print('upload_data', upload_data)
-            print('upload_data', upload_data[1:])
+            # print('upload_data', upload_data)
+            # print('upload_data', upload_data[1:])
+            # Get All Parts Data
+            query = """
+                    SELECT *
+                    FROM pmctb.parts;
+                    """
 
+            products = execute(query, 'get', conn)
+            product_pn = []
+            # print('products', len(products['result']))
+            # for pn in products['result']:
+            #     # print(type(pn), pn)
+            #     # print(pn.get('PN'))
+            #     p = pn.get('PN')
+            #     product_pn.append(p)
+
+            # print('product_pn', product_pn)
             for data in upload_data[1:]:
                 print('data', data)
+
+                for pn in products['result']:
+                    if data[0] == pn.get('PN') and data[7] == pn.get('Vendor') and data[8] == pn.get('Country_of_Origin'):
+                        print('in database')
+                        deleteQuery = """
+                            DELETE FROM pmctb.parts
+                            WHERE PN = \'""" + data[0] + """\' 
+                            AND Vendor = \'""" + data[7] + """\' 
+                            AND Country_of_Origin = \'""" + data[8] + """\'
+                            """
+                        deleteItems = execute(deleteQuery, "post", conn)
+                        print('deleted')
                 partquery = '''
                     INSERT INTO pmctb.parts
                     SET PN = \'''' + data[0] + '''\',
@@ -2161,7 +2188,7 @@ class AddPartsFromFile(Resource):
                         Lead_Time_Units = \'''' + data[10] + '''\';
                     '''
 
-                # print(partquery)
+                print(partquery)
                 # print ("5")
                 items = execute(partquery, "post", conn)
                 print("items: ", items)
