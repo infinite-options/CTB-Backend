@@ -9,6 +9,7 @@
 
 
 # SECTION 1:  IMPORT FILES AND FUNCTIONS
+import Local_Jupyter6
 from flask import Flask, request, render_template, url_for, redirect
 from flask_restful import Resource, Api
 from flask_mail import Mail, Message  # used for email
@@ -700,12 +701,6 @@ class ImportPath(Resource):
             disconnect(conn)
 
 
-<<<<<<< Updated upstream
-=======
-def testval():
-    print('working')
-
->>>>>>> Stashed changes
 def TraverseTable(file, filename):
     print("\nIn Traverse Table")
     response = {}
@@ -729,23 +724,23 @@ def TraverseTable(file, filename):
         currentLevel = 0
         lft = 0
         rgt = 0
-        productpn= 'DEFAULT'
-        producttype='DEFAULT'
-        productmfr='DEFAULT'
+        productpn = 'DEFAULT'
+        producttype = 'DEFAULT'
+        productmfr = 'DEFAULT'
         # FIND LFT
 
         # Check if product_PN, product_type, product_manufacturer column exists in file. Further, assign it to a variable.
         if 'product_PN' in file[0]:
-            productpnindex= file[0].index('product_PN')
-            productpn= file[1][productpnindex]
-        
+            productpnindex = file[0].index('product_PN')
+            productpn = file[1][productpnindex]
+
         if 'product_type' in file[0]:
-            producttypeindex= file[0].index('product_type')
-            producttype= file[1][producttypeindex]
-        
+            producttypeindex = file[0].index('product_type')
+            producttype = file[1][producttypeindex]
+
         if 'product_manufacturer' in file[0]:
-            productmfrindex= file[0].index('product_manufacturer')
-            productmfr= file[1][productmfrindex]
+            productmfrindex = file[0].index('product_manufacturer')
+            productmfr = file[1][productmfrindex]
 
         for items in file:
             # print("\nStarting on New Row")
@@ -1055,36 +1050,34 @@ def TraverseTable(file, filename):
     finally:
         disconnect(conn)
 
-import Local_Jupyter6
-
 
 # Create the insertparts function
 class Insertparts(Resource):
     def post(self):
-        response={}
+        response = {}
 
         try:
             conn = connect()
             #print("Starting parts generation")
-            jdata= request.get_json()
+            jdata = request.get_json()
             print("jdata: ", jdata)
-            models= jdata["model"]
-            print("models: ",models)
-            
+            models = jdata["model"]
+            print("models: ", models)
+
             for v in models:
                 print(v)
-                alt_models,flag=Local_Jupyter6.new_generate_data(v)
+                alt_models, flag = Local_Jupyter6.new_generate_data(v)
 
                 if not flag:
                     return (alt_models)
-                
+
             return ("Models uploaded successfully!")
         except:
             raise BadRequest(
                 'Products Request failed, please try again later.')
         finally:
             disconnect(conn)
-            
+
 
 #  GET INFORMATION FOR A SPECIFIC PRODUCT INCLUDING BOM, PARENTS, CHILDREN AND TREE STRUCTURE
 class GetBOM(Resource):
@@ -2593,4 +2586,3 @@ api.add_resource(GetParts, "/api/v2/GetParts")
 api.add_resource(Insertparts, "/api/v2/Insertparts")
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=4000)
-
