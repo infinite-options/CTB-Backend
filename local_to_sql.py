@@ -24,11 +24,11 @@ import ctb_api
 
 def dbconnect():
     conn = pymysql.connect(
-        host='127.0.0.1',
+        host='io-mysqldb8.cxjnrciilyjq.us-west-1.rds.amazonaws.com',
         port=3306,
-        user='root',
-        password='ishan',
-        database='Infinite_options'
+        user='admin',
+        password='prashant',
+        database='pmctb'
     )
     return conn
 
@@ -50,7 +50,7 @@ def get_supplier_uid():
     try:
         conn=dbconnect()
         with conn.cursor() as cur:
-            cur.callproc('new_supplier_uid')
+            cur.callproc('new_supplier_uid2')
             results=cur.fetchall()
         return results
     except:
@@ -62,7 +62,7 @@ def get_video_uid():
     try:
         conn=dbconnect()
         with conn.cursor() as cur:
-            cur.callproc('new_video_uid')
+            cur.callproc('new_video_uid2')
             results=cur.fetchall()
         return results
     except:
@@ -74,7 +74,7 @@ def get_bom_uid():
     try:
         conn=dbconnect()
         with conn.cursor() as cur:
-            cur.callproc('new_bom_uid')
+            cur.callproc('new_bom_uid2')
             results=cur.fetchall()
         return results
     except:
@@ -86,7 +86,7 @@ def get_parts_uid():
     try:
         conn=dbconnect()
         with conn.cursor() as cur:
-            cur.callproc('new_parts_uid')
+            cur.callproc('new_parts_uid2')
             results=cur.fetchall()
         return results
     except:
@@ -98,7 +98,7 @@ def get_inventory_uid():
     try:
         conn=dbconnect()
         with conn.cursor() as cur:
-            cur.callproc('new_inventory_uid')
+            cur.callproc('new_inventory_uid2')
             results=cur.fetchall()
         return results
     except:
@@ -292,10 +292,10 @@ def new_generate_data(val):
     m=[]
     m.append(val)
     for i in m:
-        sqldf_supplier = read_table("supplier")
-        sqldf_parts = read_table("parts")
-        sqldf_inventory = read_table("inventory")
-        sqldf_video =read_table("video")
+        sqldf_supplier = read_table("supplier2")
+        sqldf_parts = read_table("parts2")
+        sqldf_inventory = read_table("inventory2")
+        sqldf_video =read_table("video2")
         
         print(sqldf_parts)
         if sqldf_parts.empty==False:
@@ -341,7 +341,7 @@ def new_generate_data(val):
                 suplen+=1
         
         #insert into supplier
-        insert_into_table(df_supplier, 'supplier')
+        insert_into_table(df_supplier, 'supplier2')
         
         
         #SQL Parts update
@@ -351,7 +351,7 @@ def new_generate_data(val):
         df_parts.reset_index(inplace=True, drop=True)
         df_parts["Manufacturer"]="400-000000"
         
-        sqldf_supplier2 = read_table("supplier")
+        sqldf_supplier2 = read_table("supplier2")
         
         for index1,row1 in df_parts.iterrows():
             for index2, row2 in sqldf_supplier2.iterrows():
@@ -375,7 +375,7 @@ def new_generate_data(val):
             
         df_parts.drop(columns= ['Manufacturer name'])
         df_parts = df_parts[['Parts_UID', 'Manufacturer Part No.', 'Part Name','Manufacturer']]
-        insert_into_table(df_parts, 'parts')
+        insert_into_table(df_parts, 'parts2')
         
         #SQL Inventory Update
         df_inventory= new.copy()
@@ -397,7 +397,7 @@ def new_generate_data(val):
         df_inventory=df_inventory.drop(inventory_dup_indices)
         df_inventory.reset_index(drop=True, inplace=True)
         
-        sqldf_parts2 = read_table("parts")
+        sqldf_parts2 = read_table("parts2")
         
         for index1,row1 in df_inventory.iterrows():
             for index2, row2 in sqldf_parts2.iterrows():
@@ -411,7 +411,7 @@ def new_generate_data(val):
             df_inventory.at[j-inventorylen, 'Inventory_UID'] = '500-' + str(j).zfill(6)
         
         df_inventory=df_inventory[['Inventory_UID','Supplier_UID', 'Parts_UID', 'PS No.', 'Price', 'Availability']]
-        insert_into_table(df_inventory, 'inventory')
+        insert_into_table(df_inventory, 'inventory2')
         
         #Video Update
         newURL= f"https://www.partselect.com/Models/{i}/Videos"
@@ -462,7 +462,7 @@ def new_generate_data(val):
                     if row1['Part_UID']==row2["Manufacturer Part No."]:
                         df_video.at[index1, "Part_UID"]= row2["Parts_UID"]
             print(df_video)
-            insert_into_table(df_video, 'video')
+            insert_into_table(df_video, 'video2')
 
         #BOM update
         df_BOM= new.copy()
