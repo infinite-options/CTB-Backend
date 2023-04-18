@@ -7,76 +7,139 @@
 import pymysql
 import pandas as pd
 import mysql.connector
+import sqlalchemy
+from sqlalchemy import text
 from sqlalchemy import func
-
-
-# In[2]:
-
-
-import ctb_api
-
-
-# In[3]:
-
-
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
 import numpy as np
 import json
 import requests
+import ctb_api
 
 
-# In[29]:
+# In[24]:
 
 
-import sqlalchemy
-import requests
-import pandas as pd
+def dbconnect():
+    conn = pymysql.connect(
+        host='127.0.0.1',
+        port=3306,
+        user='root',
+        password='ishan',
+        database='Infinite_options'
+    )
+    return conn
 
-engine = sqlalchemy.create_engine('mysql+mysqlconnector://admin:prashant@io-mysqldb8.cxjnrciilyjq.us-west-1.rds.amazonaws.com:3306/pmctb', connect_args={"connect_timeout": 500})
+
+# In[25]:
 
 
-# In[51]:
+def disconnect(conn):
+    try:
+        conn.close()
+    except:
+        print("Could not properly disconnect from MySQL database.")
+
+
+# In[33]:
 
 
 def get_supplier_uid():
-    connection = engine.connect()
-    stmt = sqlalchemy.text("CALL pmctb.new_supplier_uid2()")
-    result = engine.execute(stmt)
-    connection.close()
-    return result.fetchall()
+    try:
+        conn=dbconnect()
+        with conn.cursor() as cur:
+            cur.callproc('new_supplier_uid')
+            results=cur.fetchall()
+        return results
+    except:
+        print("supplier uid error")
+    finally:
+        disconnect(conn)
 
 def get_video_uid():
-    connection = engine.connect()
-    stmt = sqlalchemy.text("CALL pmctb.new_video_uid2()")
-    result = engine.execute(stmt)
-    connection.close()
-    return result.fetchall()
+    try:
+        conn=dbconnect()
+        with conn.cursor() as cur:
+            cur.callproc('new_video_uid')
+            results=cur.fetchall()
+        return results
+    except:
+        print("video uid error")
+    finally:
+        disconnect(conn)
 
 def get_bom_uid():
-    connection = engine.connect()
-    stmt = sqlalchemy.text("CALL new_bom_uid2()")
-    result = engine.execute(stmt)
-    connection.close()
-    return result.fetchall()
-
+    try:
+        conn=dbconnect()
+        with conn.cursor() as cur:
+            cur.callproc('new_bom_uid')
+            results=cur.fetchall()
+        return results
+    except:
+        print("bom uid error")
+    finally:
+        disconnect(conn)
+        
 def get_parts_uid():
-    connection = engine.connect()
-    stmt = sqlalchemy.text("CALL pmctb.new_parts_uid2()")
-    result = engine.execute(stmt)
-    connection.close()
-    return result.fetchall()
+    try:
+        conn=dbconnect()
+        with conn.cursor() as cur:
+            cur.callproc('new_parts_uid')
+            results=cur.fetchall()
+        return results
+    except:
+        print("parts uid error")
+    finally:
+        disconnect(conn)
 
 def get_inventory_uid():
-    connection = engine.connect()
-    stmt = sqlalchemy.text("CALL pmctb.new_inventory_uid2()")
-    result = engine.execute(stmt)
-    connection.close()
-    return result.fetchall()
+    try:
+        conn=dbconnect()
+        with conn.cursor() as cur:
+            cur.callproc('new_inventory_uid')
+            results=cur.fetchall()
+        return results
+    except:
+        print("inventory uid error")
+    finally:
+        disconnect(conn)
 
 
-# In[6]:
+def read_table(table):
+    try:
+        conn=dbconnect()
+        with conn.cursor(pymysql.cursors.DictCursor) as cur:
+            cur.execute(f'SELECT * FROM {table}')
+            df = pd.DataFrame(cur.fetchall())
+        return df
+    except:
+        print(f"Unable to read table {table}")
+    finally:
+        disconnect(conn)
+
+
+# In[66]:
+
+
+def insert_into_table(df, table):
+    try:
+        conn=dbconnect()
+        columns= ", ".join([f"`{col}`" for col in df.columns])
+        placeholders = ", ".join(["%s"] * len(df.columns))
+        sql = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        values = [tuple(row) for row in df.values]
+        with conn.cursor() as cursor:
+            cursor.executemany(sql, values)
+            conn.commit()
+    except:
+        print(f"Error while inserting values in {table} table")
+    finally:
+        disconnect(conn)
+
+
+# In[44]:
 
 
 def createlevels(model):
@@ -187,7 +250,7 @@ def createlevels(model):
     return df, brand, appliancetype
 
 
-# In[7]:
+# In[53]:
 
 
 def checkmodel(model):
@@ -221,7 +284,7 @@ def checkmodel(model):
     return [],True
 
 
-# In[46]:
+# In[60]:
 
 
 def new_generate_data(val):
@@ -229,16 +292,17 @@ def new_generate_data(val):
     m=[]
     m.append(val)
     for i in m:
-        sqldf_supplier= pd.read_sql_table('supplier2', con=engine)
-        sqldf_parts= pd.read_sql_table('parts2', con=engine)
-        sqldf_inventory= pd.read_sql_table('inventory2', con=engine)
-        sqldf_video= pd.read_sql_table('video2', con=engine)
-        #sqldf_BOM= pd.read_sql_table('Bom', con=engine)
+        sqldf_supplier = read_table("supplier")
+        sqldf_parts = read_table("parts")
+        sqldf_inventory = read_table("inventory")
+        sqldf_video =read_table("video")
         
-        unique_model= set(sqldf_parts['Parts_UID'].str.split('_').str[0].unique())
-        print(unique_model)
-        if i in unique_model:
-            break
+        print(sqldf_parts)
+        if sqldf_parts.empty==False:
+            unique_model= set(sqldf_parts['Parts_UID'].str.split('_').str[0].unique())
+            print(unique_model)
+            if i in unique_model:
+                break
         df_supplier= pd.DataFrame(columns= ['Supplier_UID', 'Supplier_name', 'Supplier_website'])
         
         alt_models,model_check= checkmodel(i)
@@ -263,8 +327,9 @@ def new_generate_data(val):
                     break
             if not found:
                 supps.add(sentence)
-
-        if 'PartSelect' not in sqldf_supplier['Supplier_name'].values:
+        if sqldf_supplier.empty==True:
+            supps.add("PartSelect")
+        elif 'PartSelect' not in sqldf_supplier['Supplier_name'].values:
             supps.add("PartSelect")
         
         last_sup_id= get_supplier_uid()
@@ -274,7 +339,9 @@ def new_generate_data(val):
                 jweb= re.sub(r'[^a-zA-Z]+', '', j)
                 df_supplier.loc[len(df_supplier)] =["400-"+str(suplen).zfill(6), j , f"www.{jweb.lower()}.com"]
                 suplen+=1
-        df_supplier.to_sql('supplier2', con=engine, if_exists='append', index=False)
+        
+        #insert into supplier
+        insert_into_table(df_supplier, 'supplier')
         
         
         #SQL Parts update
@@ -284,7 +351,7 @@ def new_generate_data(val):
         df_parts.reset_index(inplace=True, drop=True)
         df_parts["Manufacturer"]="400-000000"
         
-        sqldf_supplier2= pd.read_sql_table('supplier2', con=engine)
+        sqldf_supplier2 = read_table("supplier")
         
         for index1,row1 in df_parts.iterrows():
             for index2, row2 in sqldf_supplier2.iterrows():
@@ -308,7 +375,7 @@ def new_generate_data(val):
             
         df_parts.drop(columns= ['Manufacturer name'])
         df_parts = df_parts[['Parts_UID', 'Manufacturer Part No.', 'Part Name','Manufacturer']]
-        df_parts.to_sql('parts2', con=engine, if_exists='append', index=False)
+        insert_into_table(df_parts, 'parts')
         
         #SQL Inventory Update
         df_inventory= new.copy()
@@ -320,7 +387,7 @@ def new_generate_data(val):
         
         ps_value = sqldf_supplier2.loc[sqldf_supplier2['Supplier_name'] == 'PartSelect', 'Supplier_UID'].values[0]
         df_inventory['Supplier_UID']=ps_value
-
+        
         inventory_dup_indices=[]
         for index1,row1 in df_inventory.iterrows():
             for index2, row2 in sqldf_inventory.iterrows():
@@ -330,8 +397,7 @@ def new_generate_data(val):
         df_inventory=df_inventory.drop(inventory_dup_indices)
         df_inventory.reset_index(drop=True, inplace=True)
         
-        sqldf_parts2= pd.read_sql_table('parts2', con=engine)
-        
+        sqldf_parts2 = read_table("parts")
         
         for index1,row1 in df_inventory.iterrows():
             for index2, row2 in sqldf_parts2.iterrows():
@@ -342,43 +408,17 @@ def new_generate_data(val):
         last_inventory_uid=get_inventory_uid()
         inventorylen= (int(last_inventory_uid[0][0][-6:]))
         for j in range(inventorylen, len(df_inventory)+inventorylen):
-            df_inventory.at[j-inventorylen, 'Inventory_UID'] = i+'_500-' + str(j).zfill(6)
+            df_inventory.at[j-inventorylen, 'Inventory_UID'] = '500-' + str(j).zfill(6)
         
         df_inventory=df_inventory[['Inventory_UID','Supplier_UID', 'Parts_UID', 'PS No.', 'Price', 'Availability']]
-        df_inventory.to_sql('inventory2', con=engine, if_exists='append', index=False)
-        
-        #BOM update
-        df_BOM= new.copy()
-        df_BOM.drop(columns=['Manufacturer name',"Part Name", "PS No.", "Price", "Availability"], inplace=True)
-        last_bom_uid= get_bom_uid()
-        bomlen= (int(last_bom_uid[0][0][-6:]))
-        df_BOM['BOM_UID']= "100-000001"
-        for j in range(bomlen, len(df_BOM)+bomlen):
-            df_BOM.at[j-bomlen, 'BOM_UID'] = i+'_100-' + str(j).zfill(6)
-        
-        df_BOM['product_PN']=None
-        df_BOM['product_type']=None
-        df_BOM['product_manufacturer']=None
-        
-        df_BOM.at[0,'product_manufacturer']=brand
-        df_BOM.at[0, 'product_type']= appliancetype
-        df_BOM.at[0, 'product_PN']=i
-        df_BOM['Qty']= 1
-        
-        df_BOM=df_BOM[["BOM_UID", "Level", "Manufacturer Part No.", 'Qty', 'product_PN','product_type','product_manufacturer']]
-        
-        #df_BOM.to_sql('Bom', con=engine, if_exists='append', index=False)
-        list_of_rows=[['BOM_UID','Level','Number', 'Qty','product_PN','product_type', 'product_manufacturer']]
-        for ix, rw in df_BOM.iterrows():
-            list_of_rows.append(list(rw))
-        ctb_api.TraverseTable(list_of_rows,'Home Appliance')
-        
+        insert_into_table(df_inventory, 'inventory')
         
         #Video Update
         newURL= f"https://www.partselect.com/Models/{i}/Videos"
         newpage = requests.get(newURL)
         newsoup = BeautifulSoup(newpage.content, "html.parser")
         summary= newsoup.find_all("div",class_="summary")
+        print(summary)
         if len(summary)>0:
             total_vids= (summary[0].text).split(" ")[-1]
             currvids= (summary[0].text).split(" ")[-3]
@@ -412,7 +452,7 @@ def new_generate_data(val):
             last_video_uid= get_video_uid()
             videolen= (int(last_video_uid[0][0][-6:]))
             for p in range(videolen, len(desc)+videolen):
-                vid_id.append(i+'_600-' + str(p).zfill(6))
+                vid_id.append('600-' + str(p).zfill(6))
 
             data3= {'Video_UID':vid_id,'Part_UID':desc, "Video Link":videolinks}
             df_video = pd.DataFrame(data3)
@@ -421,6 +461,34 @@ def new_generate_data(val):
                 for index2, row2 in sqldf_parts2.iterrows():
                     if row1['Part_UID']==row2["Manufacturer Part No."]:
                         df_video.at[index1, "Part_UID"]= row2["Parts_UID"]
-            df_video.to_sql('video2', con=engine, if_exists='append', index=False)
+            print(df_video)
+            insert_into_table(df_video, 'video')
+
+        #BOM update
+        df_BOM= new.copy()
+        df_BOM.drop(columns=['Manufacturer name',"Part Name", "PS No.", "Price", "Availability"], inplace=True)
+        last_bom_uid= get_bom_uid()
+        bomlen= (int(last_bom_uid[0][0][-6:]))
+        df_BOM['BOM_UID']= "100-000001"
+        for j in range(bomlen, len(df_BOM)+bomlen):
+            df_BOM.at[j-bomlen, 'BOM_UID'] = i+'_100-' + str(j).zfill(6)
+        
+        df_BOM['product_PN']=None
+        df_BOM['product_type']=None
+        df_BOM['product_manufacturer']=None
+        
+        df_BOM.at[0,'product_manufacturer']=brand
+        df_BOM.at[0, 'product_type']= appliancetype
+        df_BOM.at[0, 'product_PN']=i
+        df_BOM['Qty']= 1
+        
+        df_BOM=df_BOM[["BOM_UID", "Level", "Manufacturer Part No.", 'Qty', 'product_PN','product_type','product_manufacturer']]
+        
+        #df_BOM.to_sql('Bom', con=engine, if_exists='append', index=False)
+        list_of_rows=[['BOM_UID','Level','Number', 'Qty','product_PN','product_type', 'product_manufacturer']]
+        for ix, rw in df_BOM.iterrows():
+            list_of_rows.append(list(rw))
+        ctb_api.TraverseTable(list_of_rows,'Home Appliance')
+        print(df_BOM)
     return "Null", True
 

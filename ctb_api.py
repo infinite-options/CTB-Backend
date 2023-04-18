@@ -9,7 +9,7 @@
 
 
 # SECTION 1:  IMPORT FILES AND FUNCTIONS
-import Local_Jupyter6
+import local_to_sql
 from flask import Flask, request, render_template, url_for, redirect
 from flask_restful import Resource, Api
 from flask_mail import Mail, Message  # used for email
@@ -1066,7 +1066,7 @@ class Insertparts(Resource):
 
             for v in models:
                 print(v)
-                alt_models, flag = Local_Jupyter6.new_generate_data(v)
+                alt_models, flag = local_to_sql.new_generate_data(v)
 
                 if not flag:
                     return (alt_models)
