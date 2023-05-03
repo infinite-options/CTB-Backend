@@ -1291,9 +1291,6 @@ def createlevels(model):
     return df, brand, appliancetype
 
 
-# In[53]:
-
-
 def checkmodel(model):
     URL= f"https://www.partselect.com/Models/{model}/"
     page = requests.get(URL)
@@ -1301,7 +1298,7 @@ def checkmodel(model):
     title= soup.find_all("h1", class_="title-main mt-3 mb-4")
     print("\n"+"Model you entered:", model)
     if len(title)<1:
-        while len(title)<1:
+        while len(title)<1 and len(model)>1:
             model=model[:-1]
             URL= f"https://www.partselect.com/Models/{model}/"
             page = requests.get(URL)
@@ -1333,177 +1330,12 @@ def new_generate_data(val):
     m=[]
     m.append(val)
     for i in m:
-        sqldf_supplier = read_table("supplier2")
-        sqldf_parts = read_table("parts2")
-        sqldf_inventory = read_table("inventory2")
-        sqldf_video =read_table("video2")
-        
-        print(sqldf_parts)
-        if sqldf_parts.empty==False:
-            unique_model= set(sqldf_parts['Parts_UID'].str.split('_').str[0].unique())
-            print(unique_model)
-            if i in unique_model:
-                break
-        df_supplier= pd.DataFrame(columns= ['Supplier_UID', 'Supplier_name', 'Supplier_website'])
-        
         alt_models,model_check= checkmodel(i)
         if not model_check:
             return alt_models, False
 #             updatemodel= input("Select the option number: ")
 #             i= alt_models[int(updatemodel)-1]
         new, brand, appliancetype= createlevels(i)
-        
-        for index,row in new.iterrows():
-            ps= row['PS No.']
-            if row["Manufacturer Part No."]=="N":
-                new.at[index, "Manufacturer Part No."]=ps
-        
-        un=new["Manufacturer name"].unique()       
-        supps=set()
-        for sentence in un:
-            found = False
-            for x,word in sqldf_supplier.iterrows():
-                if word['Supplier_name'] in sentence:
-                    found = True
-                    break
-            if not found:
-                supps.add(sentence)
-        if sqldf_supplier.empty==True:
-            supps.add("PartSelect")
-        elif 'PartSelect' not in sqldf_supplier['Supplier_name'].values:
-            supps.add("PartSelect")
-        
-        last_sup_id= get_supplier_uid()
-        suplen= (int(last_sup_id[0][0][-6:]))
-        if len(supps)>0:
-            for j in supps:
-                jweb= re.sub(r'[^a-zA-Z]+', '', j)
-                df_supplier.loc[len(df_supplier)] =["400-"+str(suplen).zfill(6), j , f"www.{jweb.lower()}.com"]
-                suplen+=1
-        
-        #insert into supplier
-        insert_into_table(df_supplier, 'supplier2')
-        
-        
-        #SQL Parts update
-        df_parts= new.copy()
-        df_parts.drop(columns=['Level','PS No.', 'Availability', 'Price'], inplace=True)
-        df_parts= df_parts.drop_duplicates('Manufacturer Part No.')
-        df_parts.reset_index(inplace=True, drop=True)
-        df_parts["Manufacturer"]="400-000000"
-        
-        sqldf_supplier2 = read_table("supplier2")
-        
-        for index1,row1 in df_parts.iterrows():
-            for index2, row2 in sqldf_supplier2.iterrows():
-                if row1['Manufacturer name']==row2["Supplier_name"]:
-                    df_parts.at[index1, "Manufacturer"]= row2["Supplier_UID"]
-        
-        parts_dup_indices=[]
-        for index1,row1 in df_parts.iterrows():
-            for index2, row2 in sqldf_parts.iterrows():
-                if row1['Manufacturer Part No.']==row2["Manufacturer Part No."]:
-                    parts_dup_indices.append(index1)
-        
-        df_parts=df_parts.drop(parts_dup_indices)
-        df_parts.reset_index(drop=True, inplace=True)
-        
-        df_parts['Parts_UID']= "200-00000"
-        last_parts_uid=get_parts_uid()
-        partslen= (int(last_parts_uid[0][0][-6:]))
-        for j in range(partslen, len(df_parts)+partslen):
-            df_parts.at[j-partslen, 'Parts_UID'] = '200-' + str(j).zfill(6)
-            
-        df_parts.drop(columns= ['Manufacturer name'])
-        df_parts = df_parts[['Parts_UID', 'Manufacturer Part No.', 'Part Name','Manufacturer']]
-        insert_into_table(df_parts, 'parts2')
-        
-        #SQL Inventory Update
-        df_inventory= new.copy()
-        df_inventory.drop(columns=['Level','Manufacturer name',"Part Name"], inplace=True)
-        df_inventory= df_inventory.drop_duplicates('PS No.')
-        df_inventory.reset_index(inplace=True, drop=True)
-        df_inventory['Parts_UID']= "200-000001"
-        df_inventory['Inventory_UID']= "500-000001"
-        
-        ps_value = sqldf_supplier2.loc[sqldf_supplier2['Supplier_name'] == 'PartSelect', 'Supplier_UID'].values[0]
-        df_inventory['Supplier_UID']=ps_value
-        
-        inventory_dup_indices=[]
-        for index1,row1 in df_inventory.iterrows():
-            for index2, row2 in sqldf_inventory.iterrows():
-                if row1['PS No.']==row2["PS No."]:
-                    inventory_dup_indices.append(index1)
-        
-        df_inventory=df_inventory.drop(inventory_dup_indices)
-        df_inventory.reset_index(drop=True, inplace=True)
-        
-        sqldf_parts2 = read_table("parts2")
-        
-        for index1,row1 in df_inventory.iterrows():
-            for index2, row2 in sqldf_parts2.iterrows():
-                if row1['Manufacturer Part No.']==row2['Manufacturer Part No.']:
-                    df_inventory.at[index1, "Parts_UID"]= row2["Parts_UID"]
-        df_inventory.drop(columns= ['Manufacturer Part No.'])
-        
-        last_inventory_uid=get_inventory_uid()
-        inventorylen= (int(last_inventory_uid[0][0][-6:]))
-        for j in range(inventorylen, len(df_inventory)+inventorylen):
-            df_inventory.at[j-inventorylen, 'Inventory_UID'] = '500-' + str(j).zfill(6)
-        
-        df_inventory=df_inventory[['Inventory_UID','Supplier_UID', 'Parts_UID', 'PS No.', 'Price', 'Availability']]
-        insert_into_table(df_inventory, 'inventory2')
-        
-        #Video Update
-        newURL= f"https://www.partselect.com/Models/{i}/Videos"
-        newpage = requests.get(newURL)
-        newsoup = BeautifulSoup(newpage.content, "html.parser")
-        summary= newsoup.find_all("div",class_="summary")
-        print(summary)
-        if len(summary)>0:
-            total_vids= (summary[0].text).split(" ")[-1]
-            currvids= (summary[0].text).split(" ")[-3]
-            yt_sublink= newsoup.find_all("div", class_="yt-video")
-            description= newsoup.find_all("div",class_="mega-m__part mb-5")
-
-            desc=[]
-            videolinks= []
-            vid_id=[]
-            count1=1
-            while int(currvids)<=int(total_vids):
-                for j in range(len(yt_sublink)):
-                    suburl= yt_sublink[j]["data-yt-init"]
-                    full_link= f"https://www.youtube.com/watch?v={suburl}&ab_channel=PartSelect"
-                    videolinks.append(full_link)
-                    a1= description[j].find_all("a")
-                    model_n= (a1[0]["title"]).split(" ")[-1]
-                    desc.append(model_n)
-                count1+=1
-                URL1= f"https://www.partselect.com/Models/{i}/Videos/?start={count1}"
-                page1 = requests.get(URL1)
-                soup1 = BeautifulSoup(page1.content, "html.parser")
-                summary= soup1.find_all("div",class_="summary")
-                if int(currvids)==int(total_vids):
-                    break
-                total_vids= (summary[0].text).split(" ")[-1]
-                currvids= (summary[0].text).split(" ")[-3]
-                yt_sublink= soup1.find_all("div", class_="yt-video")
-                description= soup1.find_all("div",class_="mega-m__part mb-5")
-
-            last_video_uid= get_video_uid()
-            videolen= (int(last_video_uid[0][0][-6:]))
-            for p in range(videolen, len(desc)+videolen):
-                vid_id.append('600-' + str(p).zfill(6))
-
-            data3= {'Video_UID':vid_id,'Part_UID':desc, "Video Link":videolinks}
-            df_video = pd.DataFrame(data3)
-
-            for index1,row1 in df_video.iterrows():
-                for index2, row2 in sqldf_parts2.iterrows():
-                    if row1['Part_UID']==row2["Manufacturer Part No."]:
-                        df_video.at[index1, "Part_UID"]= row2["Parts_UID"]
-            print(df_video)
-            insert_into_table(df_video, 'video2')
 
         #BOM update
         df_BOM= new.copy()
@@ -1562,10 +1394,7 @@ class Insertparts(Resource):
             disconnect(conn)
 
 
-
-#------------------------------------------------------------------------------------
-
-
+#-----------------------------------------------------------------------------------
 
 
 #  GET INFORMATION FOR A SPECIFIC PRODUCT INCLUDING BOM, PARENTS, CHILDREN AND TREE STRUCTURE
