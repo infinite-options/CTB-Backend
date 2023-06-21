@@ -97,13 +97,15 @@ def googlesearchscrape():
     browser.get(base_url)
 
     mainelement= browser.find_elements(By.XPATH, "//div[@class='sh-dgr__content']")
-
+    
     for i in mainelement:
         title= i.find_elements(By.XPATH, ".//h3[@class='tAxDx']")
+        if not title:
+            continue
         match= title[0].text
+        testval=match
 
-        if model_number in match.replace("-", ""):
-
+        if model_number.lower() in (testval.replace("-", "")).lower() or model_number.lower() in (testval.replace("-", " ")).lower():
             pagetitles.append(match)
 
             ex= i.find_elements(By.XPATH, ".//a[@class='iXEZD']")
@@ -149,7 +151,7 @@ def googlesearchscrape():
 
             if match:
                 try:
-                    tc= float(shippingcost[-1])+float(currpageprice[-1][1:-1])
+                    tc= float(shippingcost[-1])+float(currpageprice[-1])
                     totalcost.append(tc)
                 except:
                     newcurr= currpageprice[-1][1:-1].split(" ")
@@ -157,6 +159,7 @@ def googlesearchscrape():
                     totalcost.append(tc)
             else:
                 totalcost.append("N/A")
+                
     browser.close()
     
     df= pd.DataFrame({'Description': pagetitles, 'Page Type': 'Front' , 'Seller':suppliername,
@@ -238,6 +241,7 @@ def googlesearchscrape():
     dfnew=df.append(df2)
     dfnew.reset_index(drop=True, inplace=True)
     insert_into_table(dfnew, 'googlescrape')
+    
     
 
 
